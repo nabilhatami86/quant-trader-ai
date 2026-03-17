@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python main.py --symbol EURUSD --tf 1h)",
+      "Bash(python -c \"import sys; sys.stdout.reconfigure\\(encoding=''utf-8''\\)\")",
+      "Bash(set PYTHONUTF8=1)",
+      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1h)",
+      "Bash(python -X utf8 main.py --symbol GOLD --tf 1h)",
+      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1h --backtest)",
+      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1d)",
+      "Bash(python -X utf8 main.py --symbol GOLD --tf 1d)",
+      "Bash(python -X utf8 -c \":*)",
+      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1d --no-news)"
+    ]
+  }
+}
