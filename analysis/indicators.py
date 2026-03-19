@@ -1,6 +1,3 @@
-"""
-Technical Indicators Calculator
-"""
 import pandas as pd
 import numpy as np
 from config import *
@@ -35,7 +32,7 @@ def calculate_bollinger_bands(close: pd.Series) -> pd.DataFrame:
     std    = close.rolling(BB_PERIOD).std()
     upper  = sma + BB_STD * std
     lower  = sma - BB_STD * std
-    bw     = (upper - lower) / sma  # bandwidth
+    bw     = (upper - lower) / sma
     pct_b  = (close - lower) / (upper - lower)
     return pd.DataFrame({
         "bb_upper": upper,
@@ -84,7 +81,6 @@ def calculate_emas(close: pd.Series) -> pd.DataFrame:
 
 
 def detect_candle_pattern(open_, high, low, close) -> pd.Series:
-    """Deteksi pola candle: bullish=1, bearish=-1, doji=0"""
     body       = close - open_
     range_     = (high - low).replace(0, np.nan)
     body_ratio = body.abs() / range_
@@ -103,10 +99,6 @@ def detect_candle_pattern(open_, high, low, close) -> pd.Series:
 
 
 def detect_candle_name(open_, high, low, close) -> pd.Series:
-    """
-    Deteksi nama pola candle untuk setiap baris.
-    Returns pd.Series of strings.
-    """
     body       = close - open_
     range_     = (high - low).replace(0, np.nan)
     body_ratio = body.abs() / range_
@@ -114,7 +106,6 @@ def detect_candle_name(open_, high, low, close) -> pd.Series:
     upper_shadow = (high - close.where(close > open_, open_)) / range_
     lower_shadow = (close.where(close < open_, open_) - low) / range_
 
-    # ─── Single candle ────────────────────────────────────
     doji          = body_ratio < 0.1
     spinning_top  = (body_ratio >= 0.1) & (body_ratio < 0.3)
     marubozu_bull = (body > 0) & (body_ratio > 0.9)
@@ -125,16 +116,13 @@ def detect_candle_name(open_, high, low, close) -> pd.Series:
     hanging_man   = (body < 0) & (lower_shadow > 0.6) & (upper_shadow < 0.1)
     shooting_star = (body < 0) & (upper_shadow > 0.6) & (lower_shadow < 0.1)
 
-    # ─── Two candle ───────────────────────────────────────
     bullish_engulf = (body > 0) & (body.shift() < 0) & (close > open_.shift()) & (open_ < close.shift())
     bearish_engulf = (body < 0) & (body.shift() > 0) & (close < open_.shift()) & (open_ > close.shift())
 
     tweezer_bot = (body.abs() / range_ > 0.3) & (low.round(2) == low.shift().round(2)) & (body > 0)
     tweezer_top = (body.abs() / range_ > 0.3) & (high.round(2) == high.shift().round(2)) & (body < 0)
 
-    # ─── Assign nama (prioritas dari paling kuat) ─────────
     name = pd.Series("None", index=close.index)
-
     name = name.where(~spinning_top,   "Spinning Top")
     name = name.where(~doji,           "Doji")
     name = name.where(~hanging_man,    "Hanging Man ↓")
@@ -147,12 +135,10 @@ def detect_candle_name(open_, high, low, close) -> pd.Series:
     name = name.where(~tweezer_bot,    "Tweezer Bottom ↑")
     name = name.where(~bearish_engulf, "Bearish Engulfing ↓")
     name = name.where(~bullish_engulf, "Bullish Engulfing ↑")
-
     return name
 
 
 def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Tambahkan semua indikator ke DataFrame OHLCV"""
     df = df.copy()
     close = df["Close"]
     high  = df["High"]
@@ -174,7 +160,6 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["candle_pat"]  = detect_candle_pattern(open_, high, low, close)
     df["candle_name"] = detect_candle_name(open_, high, low, close)
 
-    # Price action features
     df["price_change"]  = close.pct_change()
     df["volatility"]    = close.rolling(20).std() / close.rolling(20).mean()
     df["momentum"]      = close - close.shift(10)

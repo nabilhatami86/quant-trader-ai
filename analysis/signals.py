@@ -34,64 +34,32 @@ def calculate_smart_tp_sl(direction: str, close: float, atr: float,
         return {"tp": None, "sl": None, "tp_dist": 0,
                 "sl_dist": 0, "rr": 0, "method_tp": "NONE", "method_sl": "NONE"}
 
-    last   = df.iloc[-1]
-    prev   = df.iloc[-2] if len(df) >= 2 else last
-    buffer = atr * 0.3
+    sl_dist   = atr * ATR_MULTIPLIER_SL
+    tp_dist   = atr * ATR_MULTIPLIER_TP
+    sl_method = "ATR"
+    tp_method = "ATR"
 
     if direction == "BUY":
-        candle_low = min(float(last["Low"]), float(prev["Low"]))
-        sl         = round(candle_low - buffer, decimals)
-        sl_method  = "CandleLow"
-        sl_min     = round(close - atr * 0.3, decimals)
-        if sl > sl_min:
-            sl, sl_method = sl_min, "ATR_min"
-    else:
-        candle_high = max(float(last["High"]), float(prev["High"]))
-        sl          = round(candle_high + buffer, decimals)
-        sl_method   = "CandleHigh"
-        sl_min      = round(close + atr * 0.3, decimals)
-        if sl < sl_min:
-            sl, sl_method = sl_min, "ATR_min"
-
-    sl_dist     = abs(close - sl)
-    abs_score   = abs(final_score)
-    tp_min_dist = max(sl_dist * 1.5, atr * 1.0)
-    tp_dist     = 0.0
-    tp_method   = "ATR"
-
-    if direction == "BUY":
-        resistances, _ = _find_swing_levels(df)
-        candidates = [r for r in resistances if r > close + tp_min_dist * 0.8]
-        if candidates:
-            tp_dist, tp_method = candidates[0] - close, "SwingHigh"
-
-        if tp_dist < tp_min_dist:
-            bb_upper = float(df["bb_upper"].iloc[-1]) if "bb_upper" in df.columns else 0
-            if bb_upper > close + tp_min_dist:
-                tp_dist, tp_method = bb_upper - close, "BB_Upper"
-
-        if tp_dist < tp_min_dist:
-            tp_dist   = atr * (1.5 + (abs_score / 10) * 2.0)
-            tp_method = "ATR"
-
+        sl = round(close - sl_dist, decimals)
         tp = round(close + tp_dist, decimals)
 
+        resistances, _ = _find_swing_levels(df)
+        swing_candidates = [r for r in resistances if r > close + tp_dist]
+        if swing_candidates:
+            swing_tp = swing_candidates[0]
+            tp, tp_method = round(swing_tp, decimals), "SwingHigh"
+            tp_dist = swing_tp - close
+
     else:
-        _, supports = _find_swing_levels(df)
-        candidates = [s for s in supports if s < close - tp_min_dist * 0.8]
-        if candidates:
-            tp_dist, tp_method = close - candidates[0], "SwingLow"
-
-        if tp_dist < tp_min_dist:
-            bb_lower = float(df["bb_lower"].iloc[-1]) if "bb_lower" in df.columns else 0
-            if bb_lower < close - tp_min_dist:
-                tp_dist, tp_method = close - bb_lower, "BB_Lower"
-
-        if tp_dist < tp_min_dist:
-            tp_dist   = atr * (1.5 + (abs_score / 10) * 2.0)
-            tp_method = "ATR"
-
+        sl = round(close + sl_dist, decimals)
         tp = round(close - tp_dist, decimals)
+
+        _, supports = _find_swing_levels(df)
+        swing_candidates = [s for s in supports if s < close - tp_dist]
+        if swing_candidates:
+            swing_tp = swing_candidates[0]
+            tp, tp_method = round(swing_tp, decimals), "SwingLow"
+            tp_dist = close - swing_tp
 
     rr = round(tp_dist / sl_dist, 1) if sl_dist > 0 else 0
 
@@ -200,33 +168,54 @@ def score_candle(row: pd.Series) -> tuple[float, str]:
     return 0, "No Pattern"
 
 
-def generate_signal(df: pd.DataFrame, news_bias: dict | None = None) -> dict:
-    if df.empty:
-        return {"direction": "WAIT", "score": 0, "reasons": []}
+def _read_candle_trend(df: pd.DataFrame, lookback: int = 5) -> tuple[str, str]:
+    if len(df) < lookback:
+        return "MIXED", "Data tidak cukup"
 
-    row   = df.iloc[-1]
-    close = float(row["Close"])
-    atr   = float(row.get("atr", close * 0.001))
+    recent  = df.tail(lookback)
+    bullish = int(((recent["Close"] - recent["Open"]) > 0).sum())
+    bearish = lookback - bullish
+    ratio   = bullish / lookback
 
-    scores  = []
+    if ratio >= 0.7:
+        return "BULLISH", f"{bullish}/{lookback} candle terakhir BULLISH ↑"
+    elif ratio <= 0.3:
+        return "BEARISH", f"{bearish}/{lookback} candle terakhir BEARISH ↓"
+    else:
+        return "MIXED", f"Candle MIXED ({bullish} bull / {bearish} bear)"
+
+
+def _score_indicators(row: pd.Series, close: float,
+                      news_bias: dict | None) -> tuple:
+    ema20 = row.get(f"ema_{EMA_SLOW}", close)
+    ema50 = row.get(f"ema_{EMA_TREND}", close)
+    rsi   = row.get("rsi", 50)
     reasons = []
 
-    for fn in [score_rsi, score_macd, score_stoch, score_adx, score_candle]:
+    ema_bull = ema20 > ema50
+    ema_bear = ema20 < ema50
+
+    if ema_bull:
+        reasons.append((+1, f"EMA20 > EMA50 ({ema20:.2f} > {ema50:.2f}) ↑"))
+    elif ema_bear:
+        reasons.append((-1, f"EMA20 < EMA50 ({ema20:.2f} < {ema50:.2f}) ↓"))
+    else:
+        reasons.append((0, "EMA20 = EMA50 (flat)"))
+
+    if rsi < RSI_OVERBOUGHT:
+        reasons.append((+0.5, f"RSI {rsi:.1f} < {RSI_OVERBOUGHT} (OK BUY)"))
+    else:
+        reasons.append((-0.5, f"RSI {rsi:.1f} ≥ {RSI_OVERBOUGHT} (overbought)"))
+
+    if rsi > RSI_OVERSOLD:
+        reasons.append((+0.5, f"RSI {rsi:.1f} > {RSI_OVERSOLD} (OK SELL)"))
+    else:
+        reasons.append((-0.5, f"RSI {rsi:.1f} ≤ {RSI_OVERSOLD} (oversold)"))
+
+    for fn in [score_macd, score_stoch, score_adx, score_candle]:
         s, r = fn(row)
-        scores.append(s)
-        reasons.append((s, r))
-
-    s, r = score_ema(row, close)
-    scores.append(s)
-    reasons.append((s, r))
-
-    s, r = score_bb(row, close)
-    scores.append(s)
-    reasons.append((s, r))
-
-    total_score  = sum(scores)
-    max_possible = sum(WEIGHTS.values())
-    normalized   = (total_score / max_possible) * 10
+        if s != 0:
+            reasons.append((s, r))
 
     news_contribution = 0.0
     if news_bias:
@@ -238,21 +227,66 @@ def generate_signal(df: pd.DataFrame, news_bias: dict | None = None) -> dict:
         reasons.append((news_contribution,
                         f"News Bias {d_word} (score {n_score:+.1f}, conf:{confidence})"))
 
-    final_score = normalized + news_contribution
+    adx      = row.get("adx", 0)
+    trending = adx >= ADX_TREND_MIN
+    if not trending:
+        reasons.append((0, f"ADX {adx:.1f} < {ADX_TREND_MIN} — sideways, skip"))
 
-    if final_score >= MIN_SIGNAL_SCORE:
+    return ema_bull, ema_bear, rsi, trending, reasons, news_contribution
+
+
+def _make_decision(df: pd.DataFrame, row: pd.Series, close: float,
+                   news_bias: dict | None) -> tuple[str, list, float]:
+    ema_bull, ema_bear, rsi, trending, reasons, news_contribution = \
+        _score_indicators(row, close, news_bias)
+
+    candle_trend, candle_reason = _read_candle_trend(df, lookback=5)
+    reasons.append((0, f"Candle Trend: {candle_reason}"))
+
+    if ema_bull and rsi < RSI_OVERBOUGHT and trending and candle_trend != "BEARISH":
         direction = "BUY"
-    elif final_score <= -MIN_SIGNAL_SCORE:
+    elif ema_bear and rsi > RSI_OVERSOLD and trending and candle_trend != "BULLISH":
         direction = "SELL"
     else:
         direction = "WAIT"
+        if ema_bull and candle_trend == "BEARISH":
+            reasons.append((0, "⚠ EMA BUY tapi candle bearish — tunggu konfirmasi"))
+        elif ema_bear and candle_trend == "BULLISH":
+            reasons.append((0, "⚠ EMA SELL tapi candle bullish — tunggu konfirmasi"))
+
+    return direction, reasons, news_contribution
+
+
+def generate_signal(df: pd.DataFrame, news_bias: dict | None = None) -> dict:
+    if df.empty:
+        return {"direction": "WAIT", "score": 0, "reasons": []}
+
+    row   = df.iloc[-1]
+    close = float(row["Close"])
+    atr   = float(row.get("atr", close * 0.001))
+
+    direction, reasons, news_contribution = _make_decision(df, row, close, news_bias)
+
+    scores = []
+    for fn in [score_rsi, score_macd, score_stoch, score_adx, score_candle]:
+        s, _ = fn(row)
+        scores.append(s)
+    s, _ = score_ema(row, close)
+    scores.append(s)
+    s, _ = score_bb(row, close)
+    scores.append(s)
+
+    total_score  = sum(scores)
+    max_possible = sum(WEIGHTS.values())
+    normalized   = round((total_score / max_possible) * 10, 2)
+    final_score  = round(normalized + news_contribution, 2)
 
     tp_sl = calculate_smart_tp_sl(direction, close, atr, df, final_score)
 
     return {
         "direction":       direction,
-        "score":           round(final_score, 2),
-        "score_technical": round(normalized, 2),
+        "score":           final_score,
+        "score_technical": normalized,
         "score_news":      round(news_contribution, 2),
         "close":           close,
         "atr":             round(atr, 5),

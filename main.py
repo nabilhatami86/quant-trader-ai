@@ -37,6 +37,9 @@ def parse_args():
     parser.add_argument("--no-news",   action="store_true",       help="Nonaktifkan news filter")
     parser.add_argument("--no-ml",     action="store_true",       help="Nonaktifkan ML prediction")
     parser.add_argument("--mt5",       action="store_true",       help="Connect ke MetaTrader 5 (auto-execute)")
+    parser.add_argument("--tv",        action="store_true",       help="Ambil data dari TradingView (tvdatafeed)")
+    parser.add_argument("--tv-user",   default="",                help="Username TradingView (opsional, untuk akun premium)")
+    parser.add_argument("--tv-pass",   default="",                help="Password TradingView (opsional)")
     parser.add_argument("--mt4",       action="store_true",       help="Connect ke MetaTrader 4 (file bridge)")
     parser.add_argument("--mt-login",  type=int,   default=0,     help="Nomor akun MT5")
     parser.add_argument("--mt-pass",   default="",                help="Password MT5")
@@ -47,6 +50,10 @@ def parse_args():
     parser.add_argument("--period",      default=None,              help="Override data period (misal: 3mo)")
     parser.add_argument("--force-trade", default=None,              help="Bypass semua filter, paksa pasang order. Nilai: BUY atau SELL")
     parser.add_argument("--dca",         type=float, default=0.0,   help="Jeda antar order dalam menit — tiap X menit pasang lagi jika sinyal masih sama (misal: --dca 15)")
+    parser.add_argument("--orders",      type=int,   default=15,    help="Jumlah order sekaligus saat sinyal masuk (default: 15)")
+    parser.add_argument("--lot",         type=float, default=0.01,  help="Lot size per order (default: 0.01)")
+    parser.add_argument("--micro",       action="store_true",       help="Mode akun mikro (<1 juta IDR) — 1 order, lot 0.01, filter ketat, ML wajib setuju")
+    parser.add_argument("--multi-tp",   action="store_true",       help="Partial close: kunci profit 50%% di TP1, sisanya jalan ke TP2")
     return parser.parse_args()
 
 
@@ -92,19 +99,18 @@ def show_tuning_guide():
 
 def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
                  force_trade: str = None):
-    """Satu siklus analisis + eksekusi ke MT5/MT4 jika terhubung"""
     if not bot.load_data():
         print("[!] Gagal load data. Cek koneksi internet.")
         return False, None
 
     bot.train_model()
-    bot.fetch_news()
     result = bot.analyze()
     bot.print_analysis(result)
 
-    # Tampilkan news report jika ada
-    if bot.news_filter and bot.news_sentiment:
-        bot.news_filter.print_news_report(bot.news_sentiment)
+    # Log pergerakan candle setiap cycle
+    from data.candle_log import log_candle, print_recent
+    log_candle(bot.symbol, bot.timeframe, bot.df_ind, result.get("signal"))
+    print_recent(bot.symbol, bot.timeframe, n=8)
 
     if executor:
         sig       = result.get("signal", {})
@@ -154,10 +160,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
         if exec_dir in ("BUY", "SELL"):
             exec_result = executor.execute(sig, ml_pred, news_risk)
-            if exec_result.get("multi"):
-                n = exec_result.get("count", 0)
-                total = len(exec_result.get("results", []))
-                print(f"[MT5] ✓ {n}/{total} order masuk  SL:{sig.get('sl')}  TP:{sig.get('tp')}")
+            if exec_result.get("bulk"):
+                pass  # output sudah ditangani di executor.execute()
             elif exec_result.get("success"):
                 print(f"[MT5] ✓ Order masuk! Ticket: #{exec_result.get('ticket')}  "
                       f"SL:{sig.get('sl')}  TP:{sig.get('tp')}")
@@ -216,6 +220,18 @@ def main():
         import config
         config.ML_ENABLED = False
 
+    if args.micro:
+        import config
+        args.lot    = config.MICRO_LOT
+        args.orders = config.MICRO_MAX_ORDERS
+        args.dca    = 0.0
+        config.MIN_SIGNAL_SCORE = config.MICRO_MIN_SCORE
+        config.ADX_TREND_MIN    = config.MICRO_ADX_MIN
+
+    if args.multi_tp:
+        import config
+        config.MULTI_TP_ENABLED = True
+
     print("""
 +======================================================+
 |      TRADING ROBOT - EUR/USD & GOLD/USD              |
@@ -240,7 +256,6 @@ def main():
     use_lstm = args.lstm
     use_news = not args.no_news
 
-    # ─── MT4 SETUP ───────────────────────────────────────────
     if args.mt_setup:
         bridge = MT4Bridge()
         bridge.save_ea_file()
@@ -252,8 +267,28 @@ def main():
         print("  5. Jalankan bot: python main.py --symbol EURUSD --mt4 --live")
         return
 
-    data_src = "MetaTrader 5 (live)" if args.mt5 else "Yahoo Finance (delay)"
-    print(f"  Symbol    : {symbol} ({SYMBOLS[symbol]})")
+    data_src = ("MetaTrader 5 (live)" if args.mt5
+                else "TradingView (tvdatafeed)" if args.tv
+                else "Yahoo Finance (delay)")
+    desc = SYMBOL_DESC.get(symbol, SYMBOLS.get(symbol, ""))
+
+    if args.micro:
+        print("""
+  ╔══════════════════════════════════════════════════╗
+  ║       ⚡ MODE AKUN MIKRO  (<1 JUTA IDR)          ║
+  ║  Filter ketat — 1 order — ML wajib setuju       ║
+  ╚══════════════════════════════════════════════════╝""")
+        print(f"  Modal estimasi : <Rp 1.000.000  (~$65 USD)")
+        print(f"  Risk per trade : {MICRO_RISK_PCT}% modal  (~Rp {int(1_000_000 * MICRO_RISK_PCT / 100):,})")
+        print(f"  Lot maksimum   : {MICRO_LOT} lot/trade")
+        print(f"  Max order aktif: {MICRO_MAX_ORDERS} posisi (tidak boleh tumpuk)")
+        print(f"  ML min conf    : {MICRO_ML_CONF}%  (mode normal: 65%)")
+        print(f"  ADX minimum    : {MICRO_ADX_MIN}  (mode normal: {ADX_TREND_MIN})")
+        print(f"  Min skor sinyal: {MIN_SIGNAL_SCORE}/10  (mode normal: 5)")
+        print(f"  DCA            : OFF (dinonaktifkan, modal terlalu kecil)")
+        print()
+
+    print(f"  Symbol    : {symbol}  —  {desc}")
     print(f"  Timeframe : {timeframe}")
     print(f"  Data      : {data_src}")
     print(f"  ML (RF)   : {'ON - ' + ML_MODEL_TYPE.upper() if ML_ENABLED else 'OFF'}")
@@ -261,12 +296,16 @@ def main():
     print(f"  News      : {'ON' if use_news else 'OFF'}")
     print(f"  MT5       : {'ON' if args.mt5 else 'OFF'}")
     print(f"  MT4       : {'ON (file bridge)' if args.mt4 else 'OFF'}")
+    total_lot = round(args.lot * args.orders, 2)
+    print(f"  Lot       : {args.lot} × {args.orders} order  =  {total_lot} lot total")
+
     if args.dca > 0:
         print(f"  DCA       : pasang order tiap {args.dca:.0f} menit selama sinyal sama")
+    if args.multi_tp:
+        print(f"  Multi-TP  : ON — tutup {TP1_CLOSE_PCT:.0f}% di TP1, sisa jalan ke TP2, SL → breakeven")
     print(f"  Min Score : {MIN_SIGNAL_SCORE}/10")
     print()
 
-    # ─── MT5 CONNECT ─────────────────────────────────────────
     mt5_conn  = None
     executor  = None
     if args.mt5:
@@ -282,7 +321,10 @@ def main():
             if ok:
                 executor = SignalExecutor(mt5_conn, symbol,
                                          trailing_pips=args.trail,
-                                         dca_minutes=args.dca)
+                                         dca_minutes=args.dca,
+                                         bulk_orders=args.orders,
+                                         fixed_lot=args.lot,
+                                         strict_mode=args.micro)
                 if args.mt_status:
                     mt5_conn.print_status()
                     return
@@ -298,17 +340,37 @@ def main():
         run_backtest_mode(symbol, timeframe, args.period)
         return
 
+    from datetime import date
+
     bot = TradingBot(symbol=symbol, timeframe=timeframe,
                      use_lstm=use_lstm, use_news=use_news,
-                     mt5_connector=mt5_conn)
+                     mt5_connector=mt5_conn,
+                     use_tv=args.tv,
+                     tv_user=args.tv_user or None,
+                     tv_pass=args.tv_pass or None)
+
+    # Fetch news sekali di awal — jadi bias tetap untuk hari ini
+    bot.fetch_news()
+    if bot.news_filter and bot.news_sentiment:
+        bot.news_filter.print_news_report(bot.news_sentiment)
 
     if args.live:
         mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS ONLY")
         print(f"[~] Live mode aktif [{mt_mode}]. Refresh setiap {REFRESH_INTERVAL}s (Ctrl+C untuk stop)\n")
-        cycle = 0
+        cycle       = 0
+        news_date   = date.today()
         try:
             while True:
                 cycle += 1
+
+                # Refresh news hanya saat ganti hari
+                if date.today() != news_date:
+                    print("\n[~] Hari baru — refresh bias berita...")
+                    bot.fetch_news()
+                    if bot.news_filter and bot.news_sentiment:
+                        bot.news_filter.print_news_report(bot.news_sentiment)
+                    news_date = date.today()
+
                 print(f"\n{'-'*60}")
                 print(f"  Cycle #{cycle}  |  {__import__('datetime').datetime.now().strftime('%H:%M:%S')}")
                 print(f"{'-'*60}")
@@ -316,6 +378,8 @@ def main():
                              force_trade=args.force_trade)
                 if mt5_conn:
                     mt5_conn.print_status()
+                from data.trade_journal import print_stats
+                print_stats(symbol, timeframe)
                 print(f"  [~] Menunggu {REFRESH_INTERVAL}s...")
                 time.sleep(REFRESH_INTERVAL)
         except KeyboardInterrupt:

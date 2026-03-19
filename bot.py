@@ -60,12 +60,16 @@ def get_market_session() -> str:
 class TradingBot:
     def __init__(self, symbol: str = DEFAULT_SYMBOL, timeframe: str = DEFAULT_TIMEFRAME,
                  use_lstm: bool = False, use_news: bool = True,
-                 mt5_connector=None):
+                 mt5_connector=None, use_tv: bool = False,
+                 tv_user: str = None, tv_pass: str = None):
         self.symbol        = symbol
         self.timeframe     = timeframe
         self.use_lstm      = use_lstm and TF_AVAILABLE
         self.use_news      = use_news
-        self.mt5_conn      = mt5_connector   # jika ada, fetch data dari MT5
+        self.mt5_conn      = mt5_connector
+        self.use_tv        = use_tv
+        self.tv_user       = tv_user
+        self.tv_pass       = tv_pass
         self.predictor     = CandlePredictor(timeframe=timeframe)
         self.lstm          = LSTMPredictor(timeframe=timeframe) if self.use_lstm else None
         self.news_filter   = NewsFilter(symbol=symbol) if use_news else None
@@ -89,6 +93,19 @@ class TradingBot:
             else:
                 print(f"[MT5] {len(raw)} candles live dari broker  "
                       f"(close terakhir: {float(raw['Close'].iloc[-1]):.5f})")
+        elif self.use_tv:
+            from data.tv_feed import get_tv_ohlcv, TV_AVAILABLE
+            if TV_AVAILABLE:
+                raw = get_tv_ohlcv(self.symbol, self.timeframe, count=1500,
+                                   username=self.tv_user, password=self.tv_pass)
+                if raw.empty:
+                    print("[!] TradingView data kosong, fallback ke Yahoo Finance...")
+                    raw = fetch_data(self.symbol, self.timeframe)
+                else:
+                    print(f"[TV] close terakhir: {float(raw['Close'].iloc[-1]):.5f}")
+            else:
+                print("[!] tvdatafeed belum terinstall. Jalankan: pip install tvdatafeed")
+                raw = fetch_data(self.symbol, self.timeframe)
         else:
             print(f"[~] Fetching {self.symbol} data dari Yahoo Finance ({self.timeframe})...")
             raw = fetch_data(self.symbol, self.timeframe)
@@ -257,7 +274,6 @@ class TradingBot:
             exec_direction = "WAIT"
             exec_source    = "WAIT"
 
-        # ── News risk override ─────────────────────────────
         news_risk  = self.news_sentiment.get("risk_level", "UNKNOWN")
         news_bias_ = (news_bias or {}).get("bias", "NEUTRAL")
 
@@ -359,7 +375,7 @@ class TradingBot:
         print(f"  ATR({ATR_PERIOD})       : {result['atr']:.5f}")
         sk_color = GREEN if result["stoch_k"] < STOCH_OVERSOLD else RED if result["stoch_k"] > STOCH_OVERBOUGHT else RESET
         print(f"  Stoch K/D   : {sk_color}{result['stoch_k']} / {result['stoch_d']}{RESET}")
-        print(f"  EMA {EMA_FAST}/{EMA_SLOW}/{EMA_TREND}  : {result[f'ema{EMA_FAST}']:.5f} / {result[f'ema{EMA_SLOW}']:.5f} / {result[f'ema{EMA_TREND}']:.5f}")
+        print(f"  EMA {EMA_FAST}/{EMA_SLOW}/{EMA_TREND} : {result[f'ema{EMA_FAST}']:.5f} / {result[f'ema{EMA_SLOW}']:.5f} / {result[f'ema{EMA_TREND}']:.5f}")
         print(f"  BB Upper/Low: {result['bb_upper']:.5f} / {result['bb_lower']:.5f}")
         print(sep)
 

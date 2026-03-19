@@ -1,19 +1,3 @@
-"""
-News Filter - Forex Economic Calendar & Sentiment
-==================================================
-Sumber:
-  1. ForexFactory calendar (scraping)
-  2. NewsAPI (jika ada API key)
-  3. Yahoo Finance News
-
-Fitur:
-  - Cache per hari (disimpan permanen sbg history)
-  - LAG EFFECT: berita kemarin masih pengaruhi harga hari ini
-  - Tiap kategori berita punya "durasi efek" & decay berbeda
-  - Perang/geopolitik → efek 3-5 hari
-  - NFP/CPI → efek 1-2 hari
-  - Skor meluruh seiring waktu (decay)
-"""
 import os
 import json
 import requests
@@ -24,20 +8,18 @@ warnings.filterwarnings("ignore")
 
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 
-# Direktori history berita (disimpan permanen per tanggal)
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "news_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # Berapa hari ke belakang yang diperhitungkan efeknya
 NEWS_LOOKBACK_DAYS = 5
 
-
-# ─── KEYWORD RELEVANCE ────────────────────────────────────
 KEYWORDS_EURUSD = [
     "EUR", "USD", "ECB", "Fed", "Federal Reserve", "interest rate",
     "inflation", "CPI", "NFP", "Non-Farm", "GDP", "PMI", "FOMC",
     "European Central Bank", "Powell", "Lagarde", "dollar", "euro",
 ]
+
 
 KEYWORDS_GOLD = [
     "gold", "XAU", "GLD", "inflation", "Fed", "interest rate",
@@ -45,13 +27,9 @@ KEYWORDS_GOLD = [
     "DXY", "dollar index", "yield", "treasury",
 ]
 
-
-# ─── DIRECTION KEYWORDS + DURASI EFEK ────────────────────
-# Format: { keyword: (score, effect_days) }
-# score      : positif=BULLISH, negatif=BEARISH
-# effect_days: berapa hari efek berita ini masih berlaku
+# keyword: (score, effect_days) — positif=BULLISH, negatif=BEARISH
 DIRECTION_KEYWORDS_GOLD = {
-    # ── BULLISH jangka panjang (geopolitik, krisis) ───────
+    # BULLISH geopolitik / krisis
     "war":                (+3.0, 5),
     "conflict":           (+2.5, 4),
     "attack":             (+2.5, 4),
@@ -71,14 +49,14 @@ DIRECTION_KEYWORDS_GOLD = {
     "risk off":           (+2.0, 2),
     "uncertainty":        (+1.5, 2),
 
-    # ── BULLISH jangka menengah (kebijakan moneter) ───────
+    # BULLISH kebijakan moneter
     "rate cut":           (+3.0, 2),
     "cuts rate":          (+3.0, 2),
     "rate cuts":          (+3.0, 2),
     "dovish":             (+2.5, 2),
     "pause hike":         (+2.0, 2),
 
-    # ── BULLISH dari data ekonomi (efek 1-2 hari) ─────────
+    # BULLISH data ekonomi
     "inflation rise":     (+2.0, 2),
     "inflation surge":    (+2.0, 2),
     "inflation high":     (+2.0, 2),
@@ -102,14 +80,14 @@ DIRECTION_KEYWORDS_GOLD = {
     "gold rises":         (+1.5, 1),
     "buy gold":           (+1.0, 1),
 
-    # ── BEARISH jangka panjang ─────────────────────────────
+    # BEARISH geopolitik
     "ceasefire":          (-2.0, 3),
     "peace deal":         (-2.0, 3),
     "peace agreement":    (-2.0, 3),
     "de-escalation":      (-1.5, 2),
     "troops withdraw":    (-1.5, 2),
 
-    # ── BEARISH kebijakan moneter (efek 2 hari) ────────────
+    # BEARISH kebijakan moneter
     "rate hike":          (-3.0, 2),
     "hikes rate":         (-3.0, 2),
     "rate hikes":         (-3.0, 2),
@@ -117,7 +95,7 @@ DIRECTION_KEYWORDS_GOLD = {
     "higher for longer":  (-2.0, 2),
     "tightening":         (-2.0, 2),
 
-    # ── BEARISH data ekonomi (efek 1-2 hari) ──────────────
+    # BEARISH data ekonomi
     "dollar rises":       (-2.0, 1),
     "dollar strengthens": (-2.0, 1),
     "dollar strength":    (-2.0, 1),
@@ -169,7 +147,6 @@ DIRECTION_KEYWORDS_EURUSD = {
     "eurozone weak":      (-2.0, 2),
 }
 
-# Economic calendar → dampak ke gold
 CALENDAR_IMPACT_GOLD = {
     "Non-Farm Payrolls":      (-2.0, +2.0, 2),
     "CPI":                    (+2.0, -2.0, 2),
@@ -194,7 +171,6 @@ class NewsFilter:
                         else DIRECTION_KEYWORDS_EURUSD
         self._cached_sentiment = None
 
-    # ─── CACHE PER TANGGAL ─────────────────────────────────
     def _date_cache_path(self, date: datetime) -> str:
         date_str = date.strftime("%Y-%m-%d")
         return os.path.join(CACHE_DIR, f"{self.symbol}_{date_str}.json")
@@ -221,7 +197,6 @@ class NewsFilter:
         """Apakah cache hari ini sudah ada?"""
         return self._load_day_cache(datetime.utcnow()) is not None
 
-    # ─── YAHOO FINANCE NEWS ───────────────────────────────
     def fetch_yahoo_news(self) -> list:
         ticker_map = {"EURUSD": "EURUSD=X", "GOLD": "GC=F", "XAUUSD": "GLD"}
         ticker_str = ticker_map.get(self.symbol, "EURUSD=X")
@@ -325,7 +300,6 @@ class NewsFilter:
             return "MEDIUM"
         return "LOW"
 
-    # ─── DECAY: makin lama berita, makin kecil efeknya ────
     def _decay_factor(self, hours_ago: float, effect_days: int) -> float:
         """
         Hitung faktor peluruhan berita.
@@ -341,7 +315,6 @@ class NewsFilter:
         ratio = hours_ago / max_hours
         return round(1.0 - (ratio * 0.9), 3)
 
-    # ─── LOAD SEMUA BERITA N HARI KE BELAKANG ─────────────
     def _load_all_recent_news(self) -> list:
         """
         Kumpulkan semua berita dari N hari terakhir (dari file cache harian).
@@ -378,7 +351,6 @@ class NewsFilter:
 
         return all_items
 
-    # ─── DIRECTION BIAS DENGAN LAG EFFECT ─────────────────
     def get_direction_bias(self,
                            news_list: list | None = None,
                            calendar: list | None  = None,
@@ -402,7 +374,6 @@ class NewsFilter:
         active_events = []
         reasons      = []
 
-        # ── Kumpulkan berita dari semua hari ──────────────
         if use_history:
             all_items = self._load_all_recent_news()
         else:
@@ -421,7 +392,6 @@ class NewsFilter:
                 enriched["_is_event"]  = True
                 all_items.append(enriched)
 
-        # ── Juga masukkan berita hari ini yang baru di-fetch
         if news_list:
             for item in news_list:
                 enriched = dict(item)
@@ -436,7 +406,6 @@ class NewsFilter:
                 enriched["_is_event"]  = True
                 all_items.append(enriched)
 
-        # ── Scan semua item ───────────────────────────────
         seen_titles = set()   # hindari double-count
 
         for item in all_items:
@@ -454,7 +423,6 @@ class NewsFilter:
             imp_weight = 1.5 if impact == "HIGH" else 1.0 if impact == "MEDIUM" else 0.6
 
             if is_event:
-                # ── Event kalender ─────────────────────────
                 actual   = item.get("actual", "")
                 forecast = item.get("forecast", "")
                 ev_title = item.get("title", "")
@@ -495,7 +463,6 @@ class NewsFilter:
                             )
                         break
             else:
-                # ── Berita biasa ───────────────────────────
                 title_low = title.lower()
                 for kw, (kw_score, eff_days) in self.dir_kw.items():
                     if kw in title_low:
@@ -523,7 +490,6 @@ class NewsFilter:
                             )
                         break
 
-        # ── Normalisasi & output ──────────────────────────
         clamped = max(-10.0, min(10.0, total_score))
 
         bias       = "BULLISH" if clamped >= 3 else "BEARISH" if clamped <= -3 else "NEUTRAL"
@@ -541,7 +507,6 @@ class NewsFilter:
             "reasons":       reasons[:10],
         }
 
-    # ─── OVERALL SENTIMENT ─────────────────────────────────
     def get_sentiment(self, use_cache: bool = True) -> dict:
         """
         Fetch berita hari ini (jika belum ada di cache).
@@ -622,7 +587,6 @@ class NewsFilter:
         self._cached_sentiment = result
         return result
 
-    # ─── PRINT ─────────────────────────────────────────────
     def print_news_report(self, sentiment: dict) -> None:
         GREEN  = "\033[92m"
         RED    = "\033[91m"
@@ -651,7 +615,6 @@ class NewsFilter:
               f"({sentiment['high_news']} HIGH, {sentiment['medium_news']} MEDIUM)")
         print(sep)
 
-        # ── Prediksi Arah dari Berita (dengan lag) ─────────
         print(f"\n  {BOLD}[PREDIKSI ARAH CANDLE DARI BERITA + HISTORIS]{RESET}")
         print(f"  Bias    : {BOLD}{b_color}{bias}{RESET}  (skor: {b_score:+.1f}/10)")
         print(f"  Konfiden: {b_conf}")
@@ -678,7 +641,6 @@ class NewsFilter:
         else:
             print(f"  {DIM}Tidak ada event aktif dalam {NEWS_LOOKBACK_DAYS} hari terakhir{RESET}")
 
-        # ── Economic Calendar ──────────────────────────────
         print()
         if sentiment["calendar"]:
             print(f"  {BOLD}Economic Events Hari Ini:{RESET}")
@@ -692,7 +654,6 @@ class NewsFilter:
         else:
             print(f"  {GREEN}Tidak ada event high-impact hari ini{RESET}")
 
-        # ── Headlines ─────────────────────────────────────
         if sentiment["headlines"]:
             print(f"\n  {BOLD}Top Headlines Hari Ini:{RESET}")
             for h in sentiment["headlines"]:

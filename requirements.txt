@@ -18,6 +18,10 @@ tabulate>=0.9.0
 # pip install MetaTrader5
 # MetaTrader5>=5.0.45
 
+# ─── TradingView data feed (opsional) ─────────────────────
+# pip install tvdatafeed
+# tvdatafeed>=2.3.0
+
 # ─── Deep Learning / LSTM (opsional, butuh GPU dianjurkan) ─
 # pip install tensorflow
 # tensorflow>=2.15.0

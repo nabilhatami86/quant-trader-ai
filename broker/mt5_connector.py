@@ -25,13 +25,22 @@ MT5_CONFIG = {
 }
 
 SYMBOL_MAP = {
-    "EURUSD": "EURUSDm",
+    # Emas
     "GOLD":   "XAUUSDm",
     "XAUUSD": "XAUUSDm",
+    "XAUEUR": "XAUEURm",
+    # Forex
+    "EURUSD": "EURUSDm",
+    "GBPUSD": "GBPUSDm",
+    "USDJPY": "USDJPYm",
+    # Dollar Index (tidak semua broker ada, fallback manual)
+    "DXY":    "USDXm",
+    # Crypto
+    "BTCUSD": "BTCUSDm",
 }
 
 DEFAULT_LOT  = 0.01
-MAX_LOT      = 1
+MAX_LOT      = 0.01
 SLIPPAGE     = 10
 MAGIC_NUMBER = 202601
 BOT_COMMENT  = "TraderAI-Bot"
@@ -44,7 +53,6 @@ class MT5Connector:
         self.account    = {}
         self.last_error = ""
 
-    # ─── CONNECT ──────────────────────────────────────────────
     def connect(self, login: int = None, password: str = None,
                 server: str = None, path: str = None) -> bool:
         if not MT5_AVAILABLE:
@@ -96,7 +104,6 @@ class MT5Connector:
         if info:
             self.account = info._asdict()
 
-    # ─── SYMBOL INFO ──────────────────────────────────────────
     def get_symbol_info(self, symbol_key: str) -> dict:
         if not self.connected:
             return {}
@@ -153,7 +160,7 @@ class MT5Connector:
 
     def place_order(self, symbol_key: str, direction: str,
                     lot: float = None, sl: float = None, tp: float = None,
-                    comment: str = BOT_COMMENT) -> dict:
+                    comment: str = BOT_COMMENT, silent: bool = False) -> dict:
         if not self.connected:
             return {"success": False, "error": "Tidak terhubung ke MT5"}
 
@@ -195,8 +202,15 @@ class MT5Connector:
             return {"success": False, "error": str(mt5.last_error())}
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(f"[OK] Order {direction} {lot} lot {symbol} @ {price:.5f}")
-            print(f"     Ticket: #{result.order}  SL: {sl}  TP: {tp}")
+            if not silent:
+                print(f"[OK] Order {direction} {lot} lot {symbol} @ {price:.5f}")
+                print(f"     Ticket: #{result.order}  SL: {sl}  TP: {tp}")
+            try:
+                from data.trade_journal import log_entry
+                log_entry(symbol_key, "", result.order, direction,
+                          price, sl or 0, tp or 0, lot, comment)
+            except Exception:
+                pass
             return {
                 "success":   True,
                 "ticket":    result.order,
@@ -319,8 +333,74 @@ class MT5Connector:
         result = mt5.order_send(request)
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
             print(f"[OK] Posisi #{ticket} berhasil ditutup @ {price:.5f}")
+            try:
+                from data.trade_journal import log_exit
+                pnl = pos.profit if hasattr(pos, "profit") else 0
+                log_exit(pos.symbol, "", ticket, price, pnl)
+            except Exception:
+                pass
             return {"success": True, "ticket": ticket, "close_price": price}
         return {"success": False, "error": str(mt5.last_error())}
+
+    def partial_close(self, ticket: int, close_pct: float = 50.0) -> dict:
+        """Tutup sebagian posisi (close_pct % dari volume)."""
+        if not self.connected:
+            return {"success": False, "error": "Tidak terhubung"}
+
+        positions = mt5.positions_get(ticket=ticket)
+        if not positions:
+            return {"success": False, "error": f"Posisi #{ticket} tidak ditemukan"}
+
+        pos       = positions[0]
+        symbol    = pos.symbol
+        full_vol  = pos.volume
+        close_vol = round(full_vol * close_pct / 100.0, 2)
+
+        # Minimum lot guard
+        si        = mt5.symbol_info(symbol)
+        min_lot   = si.volume_min if si else 0.01
+        step      = si.volume_step if si else 0.01
+        close_vol = max(min_lot, round(round(close_vol / step) * step, 2))
+
+        # Tidak boleh tutup lebih dari yang ada
+        close_vol = min(close_vol, full_vol)
+
+        if pos.type == mt5.ORDER_TYPE_BUY:
+            order_type = mt5.ORDER_TYPE_SELL
+            price      = mt5.symbol_info_tick(symbol).bid
+        else:
+            order_type = mt5.ORDER_TYPE_BUY
+            price      = mt5.symbol_info_tick(symbol).ask
+
+        request = {
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       symbol,
+            "volume":       close_vol,
+            "type":         order_type,
+            "position":     ticket,
+            "price":        price,
+            "deviation":    SLIPPAGE,
+            "magic":        MAGIC_NUMBER,
+            "comment":      f"PartialClose#{ticket}",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        result = mt5.order_send(request)
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            remaining = round(full_vol - close_vol, 2)
+            print(f"[OK] Partial close #{ticket} — "
+                  f"tutup {close_vol} lot ({close_pct:.0f}%), "
+                  f"sisa {remaining} lot @ {price:.5f}")
+            try:
+                from data.trade_journal import log_exit
+                log_exit(symbol, "", ticket, price, pos.profit, note="PARTIAL")
+            except Exception:
+                pass
+            return {"success": True, "ticket": ticket,
+                    "closed_vol": close_vol, "remaining_vol": remaining,
+                    "price": price}
+        err = str(mt5.last_error())
+        print(f"[ERROR] Partial close gagal: {err}")
+        return {"success": False, "error": err}
 
     def close_all(self, symbol_key: str = None) -> list:
         symbol = SYMBOL_MAP.get(symbol_key, symbol_key) if symbol_key else None
@@ -367,7 +447,6 @@ class MT5Connector:
         """Semua posisi tanpa filter magic."""
         return [self._fmt_position(p) for p in self._raw_positions(symbol_key)]
 
-    # ─── AMBIL DATA OHLCV LANGSUNG DARI MT5 ───────────────────
     def get_ohlcv(self, symbol_key: str, timeframe: str = "1h",
                   count: int = 1000) -> "pd.DataFrame":
         import pandas as pd
@@ -376,7 +455,7 @@ class MT5Connector:
         if not self.connected:
             return pd.DataFrame()
 
-        # Mapping timeframe string → konstanta MT5
+        
         TF_MAP = {
             "1m":  mt5.TIMEFRAME_M1,
             "5m":  mt5.TIMEFRAME_M5,
@@ -432,7 +511,6 @@ class MT5Connector:
             })
         return result
 
-    # ─── PRINT STATUS ─────────────────────────────────────────
     def print_status(self) -> None:
         if not self.connected:
             print("[!] Tidak terhubung ke MT5")
@@ -488,24 +566,57 @@ class MT5Connector:
         print(sep)
 
 
-# ─── SIGNAL EXECUTOR ──────────────────────────────────────
 class SignalExecutor:
 
     def __init__(self, connector: MT5Connector, symbol_key: str,
                  trailing_pips: float = 0.0,
-                 dca_minutes: float = 0.0):
+                 dca_minutes: float = 0.0,
+                 bulk_orders: int = 1,
+                 fixed_lot: float = None,
+                 strict_mode: bool = False):
         self.mt5           = connector
         self.symbol        = symbol_key
         self.trailing_pips = trailing_pips
-        self.dca_minutes   = dca_minutes   # 0 = DCA off, >0 = jeda menit antar order
+        self.dca_minutes   = dca_minutes
+        self.bulk_orders   = bulk_orders
+        self.fixed_lot     = fixed_lot
+        self.strict_mode   = strict_mode
         self.last_sig      = None
-        self.last_tick     = 0             # timestamp order terakhir
+        self.last_tick     = 0
+        self._tp1_done     = set()       # ticket yang sudah kena partial close TP1
 
     def should_trade(self, signal: dict, ml_pred: dict) -> bool:
         direction = signal.get("direction", "WAIT")
 
         if direction == "WAIT":
             return False
+
+        if self.strict_mode:
+            from config import MICRO_ML_CONF
+            if not ml_pred or ml_pred.get("direction") == "WAIT":
+                print(f"  [MICRO] Trade dibatalkan — ML tidak ada prediksi")
+                return False
+            if ml_pred.get("direction") != direction:
+                print(f"  [MICRO] Trade dibatalkan — ML tidak sepakat: "
+                      f"Signal={direction}, ML={ml_pred.get('direction')} "
+                      f"({ml_pred.get('confidence', 0)}%)")
+                return False
+            conf = ml_pred.get("confidence", 0)
+            if conf < MICRO_ML_CONF:
+                print(f"  [MICRO] Trade dibatalkan — ML confidence {conf}% "
+                      f"< {MICRO_ML_CONF}% (minimum untuk akun mikro)")
+                return False
+            if ml_pred.get("uncertain"):
+                print(f"  [MICRO] Trade dibatalkan — ML uncertain, terlalu berisiko")
+                return False
+            # Micro: blok jika sudah ada posisi APAPUN di symbol ini
+            all_pos = self.mt5.get_all_positions(self.symbol)
+            if all_pos:
+                total = len(all_pos)
+                print(f"  [MICRO] Sudah ada {total} posisi aktif — "
+                      f"tunggu tutup dulu (modal kecil, jangan tumpuk)")
+                return False
+            return True
 
         if ml_pred and ml_pred.get("direction") not in (direction, "WAIT"):
             if not ml_pred.get("uncertain", False):
@@ -525,7 +636,6 @@ class SignalExecutor:
                 return False
             return True
 
-        # Mode normal: blok jika sudah ada posisi searah
         positions = self.mt5.get_positions(self.symbol)
         if positions:
             existing = positions[0]["direction"]
@@ -547,9 +657,64 @@ class SignalExecutor:
         if not self.should_trade(signal, ml_pred or {}):
             return {"success": False, "skipped": True}
 
+        lot = self.fixed_lot  # None = broker hitung otomatis dari risk %
+
+        # Bulk order — pasang N order secepat mungkin lalu tampilkan sekaligus
+        n = self.bulk_orders
+        if n > 1:
+            success_tickets = []
+            failed          = 0
+            for _ in range(n):
+                res = self.mt5.place_order(self.symbol, direction,
+                                           lot=lot, sl=sl, tp=tp, silent=True)
+                if res.get("success"):
+                    success_tickets.append(res.get("ticket"))
+                else:
+                    failed += 1
+
+            self.last_sig  = direction
+            self.last_tick = time.time()
+
+            GREEN  = "\033[92m"
+            RED    = "\033[91m"
+            CYAN   = "\033[96m"
+            BOLD   = "\033[1m"
+            RESET  = "\033[0m"
+            dc = GREEN if direction == "BUY" else RED
+
+            lot_str    = f"{lot} lot/order" if lot else "auto lot"
+            total_lots = round(lot * len(success_tickets), 2) if lot else "auto"
+
+            print(f"\n  {'='*50}")
+            print(f"  {BOLD}BULK ORDER — {dc}{direction}{RESET}{BOLD} × {len(success_tickets)}{RESET}")
+            print(f"  {'='*50}")
+            print(f"  Lot    : {lot_str}  (total: {total_lots} lot)")
+            print(f"  SL : {sl}   TP : {tp}")
+            if success_tickets:
+                id_range = (f"#{success_tickets[0]} — #{success_tickets[-1]}"
+                            if len(success_tickets) > 1 else f"#{success_tickets[0]}")
+                print(f"  Tickets : {CYAN}{id_range}{RESET}")
+                print(f"  {GREEN}✓ {len(success_tickets)}/{n} order masuk{RESET}", end="")
+                if failed:
+                    print(f"  {RED}({failed} gagal){RESET}", end="")
+                print()
+            else:
+                print(f"  {RED}✗ Semua order gagal{RESET}")
+            print(f"  {'='*50}\n")
+
+            return {
+                "success":   bool(success_tickets),
+                "bulk":      True,
+                "count":     len(success_tickets),
+                "tickets":   success_tickets,
+                "direction": direction,
+            }
+
+        # Single order
         result = self.mt5.place_order(
             symbol_key=self.symbol,
             direction=direction,
+            lot=lot,
             sl=sl,
             tp=tp,
         )
@@ -586,6 +751,176 @@ class SignalExecutor:
                 print(f"[MT5] Sync manual #{pos['ticket']} {pos['direction']} — "
                       f"SL: {sl}  TP: {tp}")
 
+    def check_partial_tp(self) -> None:
+        """
+        Multi-TP: tutup sebagian posisi saat harga mencapai TP1 (50% jalan ke TP).
+        Setelah partial close, SL digeser ke breakeven agar sisa posisi bebas risiko.
+        """
+        from config import MULTI_TP_ENABLED, TP1_RATIO, TP1_CLOSE_PCT
+        if not MULTI_TP_ENABLED:
+            return
+
+        si = self.mt5.get_symbol_info(self.symbol)
+        if not si:
+            return
+
+        GREEN  = "\033[92m"
+        CYAN   = "\033[96m"
+        BOLD   = "\033[1m"
+        RESET  = "\033[0m"
+
+        bid = si["bid"]
+        ask = si["ask"]
+
+        for pos in self.mt5.get_all_positions(self.symbol):
+            ticket = pos["ticket"]
+            if ticket in self._tp1_done:
+                continue  # sudah partial close sebelumnya
+
+            entry     = pos["open_price"]
+            tp        = pos["tp"]
+            direction = pos["direction"]
+
+            if not tp or tp == 0:
+                continue  # tidak ada TP, skip
+
+            # Hitung posisi TP1
+            if direction == "BUY":
+                tp1           = entry + (tp - entry) * TP1_RATIO
+                current_price = bid
+                hit_tp1       = current_price >= tp1
+            else:
+                tp1           = entry - (entry - tp) * TP1_RATIO
+                current_price = ask
+                hit_tp1       = current_price <= tp1
+
+            if not hit_tp1:
+                continue
+
+            pnl = pos.get("profit", 0)
+            print(f"\n  {BOLD}{CYAN}[TP1] #{ticket} {direction} — "
+                  f"harga {current_price:.5f} mencapai TP1 {tp1:.5f}{RESET}")
+            print(f"  {CYAN}→ Partial close {TP1_CLOSE_PCT:.0f}% posisi "
+                  f"(P&L sementara: ${pnl:+.2f}){RESET}")
+
+            res = self.mt5.partial_close(ticket, close_pct=TP1_CLOSE_PCT)
+            if res.get("success"):
+                self._tp1_done.add(ticket)
+                # Geser SL ke breakeven agar sisa posisi bebas risiko
+                from config import BREAKEVEN_BUFFER
+                digits = si.get("digits", 5)
+                if direction == "BUY":
+                    be_sl = round(entry + abs(entry) * BREAKEVEN_BUFFER * 0.001, digits)
+                else:
+                    be_sl = round(entry - abs(entry) * BREAKEVEN_BUFFER * 0.001, digits)
+                mod = self.mt5.modify_position(ticket, sl=be_sl)
+                if mod.get("success"):
+                    print(f"  {GREEN}✓ SL digeser ke breakeven {be_sl:.5f} "
+                          f"— sisa {res['remaining_vol']} lot bebas risiko{RESET}\n")
+
+    def check_breakeven(self) -> None:
+        from config import BREAKEVEN_ENABLED, BREAKEVEN_TRIGGER, BREAKEVEN_BUFFER
+        if not BREAKEVEN_ENABLED:
+            return
+
+        si = self.mt5.get_symbol_info(self.symbol)
+        if not si:
+            return
+
+        for pos in self.mt5.get_positions(self.symbol):
+            ticket     = pos["ticket"]
+            direction  = pos["direction"]
+            entry      = pos["open_price"]
+            current_sl = pos["sl"]
+            sl_dist    = abs(entry - current_sl) if current_sl else 0
+
+            if sl_dist == 0:
+                continue
+
+            bid = si["bid"]
+            ask = si["ask"]
+
+            if direction == "BUY":
+                current_price  = bid
+                profit_dist    = current_price - entry
+                breakeven_sl   = round(entry + sl_dist * BREAKEVEN_BUFFER, si["digits"])
+                # Geser SL ke breakeven jika profit sudah >= BREAKEVEN_TRIGGER x sl_dist
+                if profit_dist >= sl_dist * BREAKEVEN_TRIGGER and current_sl < breakeven_sl:
+                    res = self.mt5.modify_position(ticket, sl=breakeven_sl)
+                    if res["success"]:
+                        print(f"[BE] Breakeven aktif #{ticket} BUY — "
+                              f"SL digeser ke {breakeven_sl:.5f} (entry+buffer)")
+
+            elif direction == "SELL":
+                current_price  = ask
+                profit_dist    = entry - current_price
+                breakeven_sl   = round(entry - sl_dist * BREAKEVEN_BUFFER, si["digits"])
+                if profit_dist >= sl_dist * BREAKEVEN_TRIGGER and (current_sl == 0 or current_sl > breakeven_sl):
+                    res = self.mt5.modify_position(ticket, sl=breakeven_sl)
+                    if res["success"]:
+                        print(f"[BE] Breakeven aktif #{ticket} SELL — "
+                              f"SL digeser ke {breakeven_sl:.5f} (entry-buffer)")
+
+    def check_sl_risk(self) -> None:
+        """
+        Monitor posisi yang mendekati SL.
+        - Danger zone  (<=30% sisa jarak ke SL) : print WARNING
+        - Critical zone (<=10% sisa jarak ke SL) : tutup posisi otomatis
+        """
+        si = self.mt5.get_symbol_info(self.symbol)
+        if not si:
+            return
+
+        YELLOW = "\033[93m"
+        RED    = "\033[91m"
+        BOLD   = "\033[1m"
+        RESET  = "\033[0m"
+
+        bid = si["bid"]
+        ask = si["ask"]
+
+        for pos in self.mt5.get_all_positions(self.symbol):
+            ticket    = pos["ticket"]
+            direction = pos["direction"]
+            entry     = pos["open_price"]
+            sl        = pos["sl"]
+
+            if not sl or sl == 0:
+                continue
+
+            sl_dist = abs(entry - sl)
+            if sl_dist == 0:
+                continue
+
+            if direction == "BUY":
+                current_price = bid
+                dist_to_sl    = current_price - sl   # semakin kecil = makin bahaya
+            else:
+                current_price = ask
+                dist_to_sl    = sl - current_price
+
+            if dist_to_sl <= 0:
+                continue  # sudah kena SL, broker yang handle
+
+            ratio = dist_to_sl / sl_dist   # 1.0 = baru entry, 0.0 = tepat di SL
+
+            pnl   = pos.get("profit", 0)
+            label = "" if pos.get("magic") == MAGIC_NUMBER else " [manual]"
+
+            from config import SL_CRITICAL_PCT, SL_DANGER_PCT
+
+            if ratio <= SL_CRITICAL_PCT:
+                print(f"\n  {BOLD}{RED}[SL-KRITIS] #{ticket}{label} {direction} "
+                      f"— harga {current_price:.5f} tinggal {ratio*100:.1f}% dari SL {sl:.5f}!{RESET}")
+                print(f"  {RED}→ Menutup posisi otomatis (P&L: ${pnl:+.2f}){RESET}")
+                self.mt5.close_position(ticket)
+
+            elif ratio <= SL_DANGER_PCT:
+                print(f"  {BOLD}{YELLOW}[SL-BAHAYA] #{ticket}{label} {direction} "
+                      f"— {ratio*100:.0f}% sisa jarak ke SL "
+                      f"| harga: {current_price:.5f}  SL: {sl:.5f} "
+                      f"| P&L: ${pnl:+.2f}{RESET}")
+
     def manage_positions(self, signal: dict) -> None:
         direction = signal.get("direction", "WAIT")
 
@@ -595,6 +930,15 @@ class SignalExecutor:
                (pos["direction"] == "SELL" and direction == "BUY"):
                 print(f"[~] Sinyal berbalik - menutup posisi #{pos['ticket']}")
                 self.mt5.close_position(pos["ticket"])
+
+        # Monitor risiko SL sebelum breakeven
+        self.check_sl_risk()
+
+        # Partial close TP1 → kunci sebagian profit
+        self.check_partial_tp()
+
+        # Breakeven otomatis
+        self.check_breakeven()
 
         # Sync SL/TP ke posisi manual
         self.sync_manual_positions(signal)
