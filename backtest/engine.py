@@ -4,8 +4,8 @@ Backtest Engine - Simulasi trading historis
 import pandas as pd
 import numpy as np
 from config import *
-from core.indicators import add_all_indicators
-from core.signals import generate_signal
+from analysis.indicators import add_all_indicators
+from analysis.signals import generate_signal
 
 
 def run_backtest(df_raw: pd.DataFrame, symbol: str = "") -> dict:

@@ -1,0 +1,29 @@
+# Credentials - JANGAN di-commit!
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ML model weights
+models/*.h5
+models/*.pkl
+models/*.joblib
+
+# Logs
+logs/*.log
+logs/*.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

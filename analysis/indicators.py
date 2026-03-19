@@ -84,14 +84,14 @@ def calculate_emas(close: pd.Series) -> pd.DataFrame:
 
 
 def detect_candle_pattern(open_, high, low, close) -> pd.Series:
-    """Deteksi pola candle dasar: bullish=1, bearish=-1, doji=0"""
-    body   = close - open_
-    range_ = (high - low).replace(0, np.nan)
+    """Deteksi pola candle: bullish=1, bearish=-1, doji=0"""
+    body       = close - open_
+    range_     = (high - low).replace(0, np.nan)
     body_ratio = body.abs() / range_
 
-    doji     = body_ratio < 0.1
-    hammer   = (body > 0) & ((open_ - low) / range_ > 0.6)
-    shooting = (body < 0) & ((high - open_) / range_ > 0.6)
+    doji           = body_ratio < 0.1
+    hammer         = (body > 0) & ((open_ - low) / range_ > 0.6)
+    shooting       = (body < 0) & ((high - open_) / range_ > 0.6)
     bullish_engulf = (body > 0) & (body.shift() < 0) & (close > open_.shift()) & (open_ < close.shift())
     bearish_engulf = (body < 0) & (body.shift() > 0) & (close < open_.shift()) & (open_ > close.shift())
 
@@ -100,6 +100,55 @@ def detect_candle_pattern(open_, high, low, close) -> pd.Series:
     pattern = pattern.where(~(shooting | bearish_engulf), -1)
     pattern = pattern.where(~doji, 0)
     return pattern
+
+
+def detect_candle_name(open_, high, low, close) -> pd.Series:
+    """
+    Deteksi nama pola candle untuk setiap baris.
+    Returns pd.Series of strings.
+    """
+    body       = close - open_
+    range_     = (high - low).replace(0, np.nan)
+    body_ratio = body.abs() / range_
+
+    upper_shadow = (high - close.where(close > open_, open_)) / range_
+    lower_shadow = (close.where(close < open_, open_) - low) / range_
+
+    # ─── Single candle ────────────────────────────────────
+    doji          = body_ratio < 0.1
+    spinning_top  = (body_ratio >= 0.1) & (body_ratio < 0.3)
+    marubozu_bull = (body > 0) & (body_ratio > 0.9)
+    marubozu_bear = (body < 0) & (body_ratio > 0.9)
+
+    hammer        = (body > 0) & (lower_shadow > 0.6) & (upper_shadow < 0.1)
+    inv_hammer    = (body > 0) & (upper_shadow > 0.6) & (lower_shadow < 0.1)
+    hanging_man   = (body < 0) & (lower_shadow > 0.6) & (upper_shadow < 0.1)
+    shooting_star = (body < 0) & (upper_shadow > 0.6) & (lower_shadow < 0.1)
+
+    # ─── Two candle ───────────────────────────────────────
+    bullish_engulf = (body > 0) & (body.shift() < 0) & (close > open_.shift()) & (open_ < close.shift())
+    bearish_engulf = (body < 0) & (body.shift() > 0) & (close < open_.shift()) & (open_ > close.shift())
+
+    tweezer_bot = (body.abs() / range_ > 0.3) & (low.round(2) == low.shift().round(2)) & (body > 0)
+    tweezer_top = (body.abs() / range_ > 0.3) & (high.round(2) == high.shift().round(2)) & (body < 0)
+
+    # ─── Assign nama (prioritas dari paling kuat) ─────────
+    name = pd.Series("None", index=close.index)
+
+    name = name.where(~spinning_top,   "Spinning Top")
+    name = name.where(~doji,           "Doji")
+    name = name.where(~hanging_man,    "Hanging Man ↓")
+    name = name.where(~inv_hammer,     "Inverted Hammer")
+    name = name.where(~shooting_star,  "Shooting Star ↓")
+    name = name.where(~hammer,         "Hammer ↑")
+    name = name.where(~marubozu_bear,  "Marubozu Bear ↓")
+    name = name.where(~marubozu_bull,  "Marubozu Bull ↑")
+    name = name.where(~tweezer_top,    "Tweezer Top ↓")
+    name = name.where(~tweezer_bot,    "Tweezer Bottom ↑")
+    name = name.where(~bearish_engulf, "Bearish Engulfing ↓")
+    name = name.where(~bullish_engulf, "Bullish Engulfing ↑")
+
+    return name
 
 
 def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -123,6 +172,7 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     ema_df            = calculate_emas(close)
     df                = pd.concat([df, ema_df], axis=1)
     df["candle_pat"]  = detect_candle_pattern(open_, high, low, close)
+    df["candle_name"] = detect_candle_name(open_, high, low, close)
 
     # Price action features
     df["price_change"]  = close.pct_change()

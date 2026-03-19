@@ -30,25 +30,38 @@ warnings.filterwarnings("ignore")
 from config import *
 
 # Confidence minimum untuk meng-output prediksi (bukan "UNCERTAIN")
-CONFIDENCE_THRESHOLD = 55.0   # %, naikkan = lebih konservatif tapi akurat
+# 65% = lebih konservatif, jarang trade tapi akurasi lebih tinggi
+CONFIDENCE_THRESHOLD = 65.0
 
-# Label threshold per timeframe — semakin tinggi TF, semakin besar threshold
+# Label threshold per timeframe — floor minimum (akan di-override ATR jika lebih besar)
 LABEL_THRESHOLDS = {
-    "1m":  0.0002,   # 0.02%
-    "5m":  0.0003,   # 0.03%
-    "15m": 0.0004,   # 0.04%
-    "1h":  0.0008,   # 0.08%  (~8 pips EURUSD, lebih bermakna)
-    "4h":  0.0015,   # 0.15%
-    "1d":  0.003,    # 0.30%  (~30 pips, trend harian nyata)
+    "1m":  0.0003,
+    "5m":  0.0008,   # dinaikkan: GOLD 5m butuh min 0.08% (~$4 di $4900), bukan $1.5
+    "15m": 0.0012,
+    "1h":  0.0020,
+    "4h":  0.0035,
+    "1d":  0.006,
 }
-DEFAULT_LABEL_THRESHOLD = 0.0008
+DEFAULT_LABEL_THRESHOLD = 0.0020
+
+# Berapa candle ke depan untuk prediksi (3 = lebih stabil dari noise vs 1)
+LOOKAHEAD_CANDLES = {
+    "1m":  3,
+    "5m":  3,
+    "15m": 3,
+    "1h":  2,
+    "4h":  2,
+    "1d":  1,
+}
+DEFAULT_LOOKAHEAD = 3
 
 
 class CandlePredictor:
     def __init__(self, timeframe: str = "1h"):
         self.timeframe     = timeframe
         self.label_thresh  = LABEL_THRESHOLDS.get(timeframe, DEFAULT_LABEL_THRESHOLD)
-        self.scaler        = RobustScaler()          # Lebih tahan outlier
+        self.lookahead     = LOOKAHEAD_CANDLES.get(timeframe, DEFAULT_LOOKAHEAD)
+        self.scaler        = RobustScaler()
         self.selector      = None
         self.trained       = False
         self.accuracy      = 0.0
@@ -207,16 +220,34 @@ class CandlePredictor:
     # ─── LABELING ─────────────────────────────────────────────
     def _make_labels(self, df: pd.DataFrame, threshold: float = None):
         """
-        Label threshold-based:
-          1 = BUY  (close berikutnya naik > threshold)
-          0 = SELL (close berikutnya turun > threshold)
-          NaN = sideways (dibuang dari training)
+        ATR-adaptive threshold + multi-candle lookahead:
+          1 = BUY  (harga naik > threshold dalam N candle ke depan)
+          0 = SELL (harga turun > threshold dalam N candle ke depan)
+          NaN = sideways / tidak jelas (dibuang dari training)
+
+        Threshold = max(fixed_floor, ATR * 0.4)
+        Ini kunci utama: GOLD 5m ATR ~$10, jadi threshold ~$4 bukan $1.5
         """
+        n   = self.lookahead
         thr = threshold if threshold is not None else self.label_thresh
-        fwd_ret = df["Close"].shift(-1) / df["Close"] - 1
-        label   = pd.Series(np.nan, index=df.index)
-        label[fwd_ret >  thr] = 1
-        label[fwd_ret < -thr] = 0
+
+        # ATR-adaptive: pakai mana yang lebih besar antara floor dan 40% ATR
+        if "atr" in df.columns:
+            atr_pct   = df["atr"] / df["Close"] * 0.4  # 40% dari 1-ATR sebagai % harga
+            eff_thr   = atr_pct.clip(lower=thr)         # tidak boleh di bawah floor
+        else:
+            eff_thr   = thr
+
+        # Lihat N candle ke depan: ambil close candle ke-N
+        fwd_ret = df["Close"].shift(-n) / df["Close"] - 1
+
+        label = pd.Series(np.nan, index=df.index)
+        if isinstance(eff_thr, pd.Series):
+            label[fwd_ret >  eff_thr] = 1
+            label[fwd_ret < -eff_thr] = 0
+        else:
+            label[fwd_ret >  eff_thr] = 1
+            label[fwd_ret < -eff_thr] = 0
         return label
 
     # ─── TRAIN ────────────────────────────────────────────────

@@ -1,0 +1,119 @@
+{
+  "date": "2026-03-19",
+  "symbol": "GOLD",
+  "news": [
+    {
+      "title": "How to invest in gold: A beginner's guide",
+      "source": "Yahoo Personal Finance",
+      "published": "2026-03-18T21:05:00Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/personal-finance/investing/article/gold-investing-for-beginners-210500678.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Gold IRA vs. physical gold: Which is the better investment?",
+      "source": "Yahoo Personal Finance",
+      "published": "2026-03-10T22:46:54Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/personal-finance/investing/article/gold-ira-vs-physical-gold-224654072.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Gold Rises on Likely Technical Recovery",
+      "source": "The Wall Street Journal",
+      "published": "2026-03-18T23:35:00Z",
+      "impact": "LOW",
+      "url": "https://www.wsj.com/finance/commodities-futures/gold-rises-on-likely-technical-recovery-031b61ff?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Why Royal Gold (RGLD) Is Down 12.1% After Mixed Q4, Dividend Hike And Debt-Cut Plan",
+      "source": "Simply Wall St.",
+      "published": "2026-03-18T22:05:06Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/why-royal-gold-rgld-down-220506640.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Gold Tumbles as Powell’s Inflation Concerns Dash Easing Bets",
+      "source": "Bloomberg",
+      "published": "2026-03-18T20:04:29Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/news/gold-steady-near-5-000-065630369.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Unemployment Claims",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "215K",
+      "previous": "213K",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Philly Fed Manufacturing Index",
+      "country": "USD",
+      "time": "",
+      "impact": "MEDIUM",
+      "forecast": "8.3",
+      "previous": "16.3",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "New Home Sales",
+      "country": "USD",
+      "time": "",
+      "impact": "MEDIUM",
+      "forecast": "722K",
+      "previous": "745K",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "CB Leading Index m/m",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "-0.1%",
+      "previous": "-0.2%",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Final Wholesale Inventories m/m",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "0.2%",
+      "previous": "0.2%",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Natural Gas Storage",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "39B",
+      "previous": "-38B",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    }
+  ]
+}

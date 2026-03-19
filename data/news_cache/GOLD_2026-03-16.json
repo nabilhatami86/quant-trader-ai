@@ -1,0 +1,17 @@
+{
+  "date": "2026-03-16",
+  "symbol": "GOLD",
+  "news": [
+    {
+      "title": "Iran launches missile attack on Israel, war escalates",
+      "impact": "HIGH",
+      "date": "2 days ago"
+    },
+    {
+      "title": "Geopolitical crisis drives gold to record high safe haven demand",
+      "impact": "HIGH",
+      "date": "2 days ago"
+    }
+  ],
+  "calendar": []
+}

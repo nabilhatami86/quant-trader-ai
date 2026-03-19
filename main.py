@@ -20,8 +20,8 @@ import os
 
 from config import *
 from bot import TradingBot, fetch_data
-from core.backtest import run_backtest, print_backtest_report
-from core.indicators import add_all_indicators
+from backtest.engine import run_backtest, print_backtest_report
+from analysis.indicators import add_all_indicators
 from broker.mt5_connector import MT5Connector, SignalExecutor, MT5_AVAILABLE
 from broker.mt4_bridge import MT4Bridge
 
@@ -36,7 +36,6 @@ def parse_args():
     parser.add_argument("--lstm",      action="store_true",       help="Aktifkan LSTM (TensorFlow)")
     parser.add_argument("--no-news",   action="store_true",       help="Nonaktifkan news filter")
     parser.add_argument("--no-ml",     action="store_true",       help="Nonaktifkan ML prediction")
-    # MetaTrader
     parser.add_argument("--mt5",       action="store_true",       help="Connect ke MetaTrader 5 (auto-execute)")
     parser.add_argument("--mt4",       action="store_true",       help="Connect ke MetaTrader 4 (file bridge)")
     parser.add_argument("--mt-login",  type=int,   default=0,     help="Nomor akun MT5")
@@ -44,7 +43,10 @@ def parse_args():
     parser.add_argument("--mt-server", default="",                help="Server broker MT5")
     parser.add_argument("--mt-setup",  action="store_true",       help="Setup & generate file EA untuk MT4")
     parser.add_argument("--mt-status", action="store_true",       help="Tampilkan status akun MT5")
-    parser.add_argument("--period",    default=None,              help="Override data period (misal: 3mo)")
+    parser.add_argument("--trail",       type=float, default=0.0,   help="Aktifkan trailing stop (pips), misal: --trail 15")
+    parser.add_argument("--period",      default=None,              help="Override data period (misal: 3mo)")
+    parser.add_argument("--force-trade", default=None,              help="Bypass semua filter, paksa pasang order. Nilai: BUY atau SELL")
+    parser.add_argument("--dca",         type=float, default=0.0,   help="Jeda antar order dalam menit — tiap X menit pasang lagi jika sinyal masih sama (misal: --dca 15)")
     return parser.parse_args()
 
 
@@ -88,7 +90,8 @@ def show_tuning_guide():
 """)
 
 
-def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None):
+def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
+                 force_trade: str = None):
     """Satu siklus analisis + eksekusi ke MT5/MT4 jika terhubung"""
     if not bot.load_data():
         print("[!] Gagal load data. Cek koneksi internet.")
@@ -103,28 +106,68 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None):
     if bot.news_filter and bot.news_sentiment:
         bot.news_filter.print_news_report(bot.news_sentiment)
 
-    # ─── AUTO-EXECUTE KE MT5 ──────────────────────────────────
     if executor:
         sig       = result.get("signal", {})
         ml_pred   = result.get("ml_pred", {})
         news_risk = result.get("news_risk", "LOW")
-        direction = sig.get("direction", "WAIT")
 
-        print(f"\n[MT5] Signal: {direction} | News Risk: {news_risk}")
+        if force_trade and force_trade.upper() in ("BUY", "SELL"):
+            force_dir = force_trade.upper()
+            print(f"\n[MT5] ⚡ FORCE-TRADE aktif — paksa {force_dir} tanpa filter")
 
-        # Manage posisi terbuka (close jika arah berbalik)
+            close = result.get("close", 0)
+            atr   = result.get("atr", close * 0.001) if result.get("atr") else close * 0.001
+
+            if sig.get("sl") is None:
+                from analysis.signals import calculate_smart_tp_sl
+                from analysis.indicators import add_all_indicators
+                tp_sl = calculate_smart_tp_sl(force_dir, close, atr,
+                                              bot.df_ind, 5.0)
+                sig = dict(sig)
+                sig["direction"] = force_dir
+                sig["sl"]        = tp_sl["sl"]
+                sig["tp"]        = tp_sl["tp"]
+            else:
+                sig = dict(sig)
+                sig["direction"] = force_dir
+
+            result_order = executor.mt5.place_order(
+                symbol_key=bot.symbol,
+                direction=force_dir,
+                sl=sig.get("sl"),
+                tp=sig.get("tp"),
+            )
+            if result_order.get("success"):
+                print(f"[MT5] ✓ Order masuk! Ticket: #{result_order.get('ticket')}")
+                print(f"      {force_dir}  SL:{sig.get('sl')}  TP:{sig.get('tp')}")
+            else:
+                print(f"[MT5] ✗ Order gagal: {result_order.get('error')}")
+            return True, result
+
+        exec_dir = result.get("exec_direction", "WAIT")
+        exec_src = result.get("exec_source", "")
+
+        print(f"\n[MT5] Keputusan: {exec_dir}  "
+              f"(sumber: {exec_src})  |  News Risk: {news_risk}")
+
         executor.manage_positions(sig)
 
-        if direction in ("BUY", "SELL"):
+        if exec_dir in ("BUY", "SELL"):
             exec_result = executor.execute(sig, ml_pred, news_risk)
-            if exec_result.get("success"):
-                print(f"[MT5] Order berhasil! Ticket: #{exec_result.get('ticket')}")
+            if exec_result.get("multi"):
+                n = exec_result.get("count", 0)
+                total = len(exec_result.get("results", []))
+                print(f"[MT5] ✓ {n}/{total} order masuk  SL:{sig.get('sl')}  TP:{sig.get('tp')}")
+            elif exec_result.get("success"):
+                print(f"[MT5] ✓ Order masuk! Ticket: #{exec_result.get('ticket')}  "
+                      f"SL:{sig.get('sl')}  TP:{sig.get('tp')}")
             elif exec_result.get("skipped"):
-                print(f"[MT5] Order di-skip (posisi sudah ada / filter aktif)")
+                print(f"[MT5] Order di-skip: {exec_result.get('reason','posisi sudah ada / DCA menunggu')}")
             else:
                 print(f"[MT5] Order gagal: {exec_result.get('error')}")
+        else:
+            print(f"[MT5] Tidak eksekusi — menunggu sinyal lebih kuat")
 
-    # ─── AUTO-EXECUTE KE MT4 ──────────────────────────────────
     if mt4:
         sig       = result.get("signal", {})
         news_risk = result.get("news_risk", "LOW")
@@ -147,7 +190,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None):
 def run_backtest_mode(symbol: str, timeframe: str, period: str = None):
     print(f"\n[~] Running backtest for {symbol} ({timeframe})...")
     from bot import fetch_data
-    from indicators import add_all_indicators
+    from analysis.indicators import add_all_indicators
 
     bt_period = period or BACKTEST_PERIOD
     raw = fetch_data(symbol, timeframe, bt_period)
@@ -169,7 +212,6 @@ def run_backtest_mode(symbol: str, timeframe: str, period: str = None):
 def main():
     args = parse_args()
 
-    # Override config jika --no-ml
     if args.no_ml:
         import config
         config.ML_ENABLED = False
@@ -210,13 +252,17 @@ def main():
         print("  5. Jalankan bot: python main.py --symbol EURUSD --mt4 --live")
         return
 
+    data_src = "MetaTrader 5 (live)" if args.mt5 else "Yahoo Finance (delay)"
     print(f"  Symbol    : {symbol} ({SYMBOLS[symbol]})")
     print(f"  Timeframe : {timeframe}")
+    print(f"  Data      : {data_src}")
     print(f"  ML (RF)   : {'ON - ' + ML_MODEL_TYPE.upper() if ML_ENABLED else 'OFF'}")
     print(f"  LSTM (DL) : {'ON (TensorFlow)' if use_lstm and TF_AVAILABLE else 'OFF (--lstm untuk aktifkan)'}")
     print(f"  News      : {'ON' if use_news else 'OFF'}")
     print(f"  MT5       : {'ON' if args.mt5 else 'OFF'}")
     print(f"  MT4       : {'ON (file bridge)' if args.mt4 else 'OFF'}")
+    if args.dca > 0:
+        print(f"  DCA       : pasang order tiap {args.dca:.0f} menit selama sinyal sama")
     print(f"  Min Score : {MIN_SIGNAL_SCORE}/10")
     print()
 
@@ -234,7 +280,9 @@ def main():
                 server=args.mt_server or None,
             )
             if ok:
-                executor = SignalExecutor(mt5_conn, symbol)
+                executor = SignalExecutor(mt5_conn, symbol,
+                                         trailing_pips=args.trail,
+                                         dca_minutes=args.dca)
                 if args.mt_status:
                     mt5_conn.print_status()
                     return
@@ -242,22 +290,19 @@ def main():
                 print("[!] MT5 gagal connect. Lanjut tanpa eksekusi order.")
                 mt5_conn = None
 
-    # ─── MT4 BRIDGE ──────────────────────────────────────────
     mt4_bridge = MT4Bridge() if args.mt4 else None
     if mt4_bridge:
         print(f"[OK] MT4 Bridge aktif. Signal file: {mt4_bridge.signal_path}")
 
-    # ─── BACKTEST MODE ────────────────────────────────────────
     if args.backtest:
         run_backtest_mode(symbol, timeframe, args.period)
         return
 
-    # ─── ANALISIS MODE ───────────────────────────────────────
     bot = TradingBot(symbol=symbol, timeframe=timeframe,
-                     use_lstm=use_lstm, use_news=use_news)
+                     use_lstm=use_lstm, use_news=use_news,
+                     mt5_connector=mt5_conn)
 
     if args.live:
-        # Live mode - refresh otomatis
         mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS ONLY")
         print(f"[~] Live mode aktif [{mt_mode}]. Refresh setiap {REFRESH_INTERVAL}s (Ctrl+C untuk stop)\n")
         cycle = 0
@@ -267,7 +312,8 @@ def main():
                 print(f"\n{'-'*60}")
                 print(f"  Cycle #{cycle}  |  {__import__('datetime').datetime.now().strftime('%H:%M:%S')}")
                 print(f"{'-'*60}")
-                run_analysis(bot, executor=executor, mt4=mt4_bridge)
+                run_analysis(bot, executor=executor, mt4=mt4_bridge,
+                             force_trade=args.force_trade)
                 if mt5_conn:
                     mt5_conn.print_status()
                 print(f"  [~] Menunggu {REFRESH_INTERVAL}s...")
@@ -277,8 +323,8 @@ def main():
             if mt5_conn:
                 mt5_conn.disconnect()
     else:
-        # Single analysis
-        run_analysis(bot, executor=executor, mt4=mt4_bridge)
+        run_analysis(bot, executor=executor, mt4=mt4_bridge,
+                     force_trade=args.force_trade)
         if mt5_conn:
             mt5_conn.print_status()
             mt5_conn.disconnect()
