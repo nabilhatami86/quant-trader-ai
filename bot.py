@@ -194,15 +194,14 @@ class TradingBot:
                   f"Bias Berita: {b_str} ({b_sc:+.1f}) | "
                   f"{self.news_sentiment.get('total_news', 0)} articles")
 
-    def analyze(self) -> dict:
+    def analyze(self, candle_memory: dict = None) -> dict:
         if self.df_ind.empty:
             return {}
 
-        # Ambil news bias jika tersedia
         news_bias = self.news_sentiment.get("direction_bias") if self.news_sentiment else None
-
-        # Rule-based signal — sertakan news bias
-        sig = generate_signal(self.df_ind, news_bias=news_bias)
+        news_risk = self.news_sentiment.get("risk_level", "LOW") if self.news_sentiment else "LOW"
+        sig = generate_signal(self.df_ind, news_bias=news_bias,
+                              news_risk=news_risk, candle_memory=candle_memory)
 
         # ML prediction (Random Forest / Gradient Boosting)
         ml_pred = {}

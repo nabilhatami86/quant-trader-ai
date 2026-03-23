@@ -44,7 +44,9 @@ Robot trading otomatis berbasis **Python** yang menggabungkan **Machine Learning
 | **Lot Fleksibel** | Set lot per order via CLI (`--lot 0.5`) atau auto dari risk % |
 | **Trailing Stop** | SL otomatis geser mengikuti harga |
 | **Multi-TP (Partial Close)** | Tutup 50% posisi di TP1 → profit terkunci, sisa 50% jalan ke TP2 bebas risiko |
+| **Risk-Based SL** | SL dihitung dari maksimal kerugian per order (misal $1/order) — bukan dari ATR (`--risk`) |
 | **Mode Mikro** | Khusus akun <1 juta IDR: 1 order, lot minimum, filter ekstra ketat (`--micro`) |
+| **Mode Real** | Akun real ~$60 USD: 1 order, lot 0.10, target $15-20/trade, multi-TP + trailing otomatis (`--real`) |
 | **Trade Journal** | Catat semua entry/exit, hitung win rate & total P&L |
 | **Multi Symbol** | XAUUSD, XAUEUR, EURUSD, GBPUSD, USDJPY, DXY, BTCUSD |
 | **Backtest Engine** | Simulasi historis: PnL, win rate, max drawdown |
@@ -347,14 +349,96 @@ python main.py --symbol XAUUSD --mt5 --live --dca 15
 python main.py --symbol XAUUSD --tf 1h --mt5 --live --multi-tp
 ```
 
+### Risk-Based SL — Batasi Kerugian per Order
+
+Alih-alih SL dari ATR, SL dihitung otomatis agar kerugian maksimal per order = nilai yang kamu tentukan.
+
+```bash
+# Maksimal rugi $1 per order
+python main.py --symbol XAUUSD --tf 5m --mt5 --live --risk 1.0
+
+# Kombinasi: risk-based SL + 15 order = max rugi $15 total jika semua SL
+python main.py --symbol XAUUSD --tf 5m --mt5 --live --risk 1.0 --orders 15 --lot 0.01
+
+# Untuk akun $60: risk $2/order × 1 order = max 3.3% per trade
+python main.py --symbol XAUUSD --tf 5m --mt5 --live --risk 2.0 --orders 1 --micro
+```
+
+**Cara kerja:**
+- Bot hitung jarak SL = `risk_usd ÷ (lot × pip_value)`
+- Harga SL dipasang persis agar maks kerugian = nominal yang kamu set
+- TP tetap dari ATR seperti biasa → RR otomatis > 1:2
+
+**Contoh untuk XAUUSD 0.01 lot, risk $1:**
+```
+pip_value ≈ $0.01 per pip
+sl_pips   = $1.00 ÷ (0.01 × 0.01) = 10.000 pips... [terlalu jauh]
+```
+> Gunakan `--risk 0.5` untuk SL lebih ketat atau turunkan lot.
+
+### Mode Akun Real — Pilih Lot Sesuai Saldo
+
+```bash
+python main.py --symbol XAUUSD --tf 5m --mt5 --live --real
+```
+
+#### Minimum Saldo per Lot Size (XAUUSD, leverage 1:500)
+
+| Lot   | Margin min | Loss jika kena SL (ATR ~$5) | Saldo AMAN (risiko 2%/trade) |
+|-------|-----------|----------------------------|-------------------------------|
+| 0.01  | ~$6       | ~$5                        | **min $250**                  |
+| 0.02  | ~$12      | ~$10                       | **min $500**                  |
+| 0.03  | ~$18      | ~$15                       | **min $750**                  |
+| 0.05  | ~$30      | ~$25                       | **min $1,250**                |
+| 0.10  | ~$60      | ~$50                       | **min $2,500**                |
+
+> ⚠️ **Saldo $100 dengan lot 0.10 = error "Not Enough Money"** — margin $60 tidak cukup karena tidak ada buffer untuk floating loss. Gunakan lot 0.01 untuk saldo di bawah $250.
+
+**Rekomendasi berdasarkan saldo:**
+
+| Saldo       | Lot yang aman | Ubah di config.py          |
+|-------------|---------------|----------------------------|
+| $60 – $100  | **0.01**      | `REAL_LOT = 0.01`          |
+| $100 – $300 | **0.02**      | `REAL_LOT = 0.02`          |
+| $300 – $600 | **0.05**      | `REAL_LOT = 0.05`          |
+| $600 – $1k  | **0.07**      | `REAL_LOT = 0.07`          |
+| $2,500+     | **0.10**      | `REAL_LOT = 0.10` (default)|
+
+Ubah lot di [config.py](config.py):
+```python
+REAL_LOT = 0.01   # aman untuk saldo $60-$100
+```
+
+Otomatis set saat `--real`:
+
+| Pengaturan | Nilai |
+|---|---|
+| Lot per order | sesuai `REAL_LOT` di config.py |
+| Jumlah order | **1** (tidak tumpuk) |
+| DCA | **OFF** |
+| Multi-TP | **ON** — tutup 50% di TP1, sisa jalan ke TP2 |
+| Trailing stop | **15 pips** — ikuti harga setelah TP1 |
+| Breakeven | **ON** — SL geser ke entry saat profit = jarak SL |
+| SL | 1× ATR (RR 1:10) |
+| TP | 10× ATR |
+| ML min confidence | **70%** |
+| ADX minimum | **28** (trending) |
+
+**Estimasi per trade dengan lot 0.01 (saldo $100, ATR 5m ~$5):**
+```
+SL = 1× $5  = $5 jarak   → 0.01 lot → risk   $0.50 (0.5% dari $100)
+TP = 10× $5 = $50 jarak  → 0.01 lot → profit  $5.00
+RR = 1:10 ✓  — 1 menang = tutup 10 trade yang rugi
+```
+
 ### Mode Akun Mikro (<1 juta IDR)
 
 ```bash
 # Filter ketat, 1 order, lot minimum
 python main.py --symbol XAUUSD --tf 1h --mt5 --live --micro
 
-# Kombinasi terbaik untuk modal kecil
-python main.py --symbol XAUUSD --tf 1h --mt5 --live --micro --multi-tp
+# Kombinasi terbaik untuk modal kecil: micro + risk-based SL + partial close
+python main.py --symbol XAUUSD --tf 1h --mt5 --live --micro --multi-tp --risk 1.0
 ```
 
 ### Trailing stop
@@ -408,6 +492,8 @@ python main.py --symbol XAUEUR --tf 1h --mt5 --live
 | `--dca` | 0 | Jeda DCA dalam menit (0 = off) |
 | `--trail` | 0 | Trailing stop dalam pips (0 = off) |
 | `--multi-tp` | off | Partial close: kunci 50% profit di TP1, sisa jalan ke TP2 |
+| `--risk` | 0 | Maks kerugian per order dalam USD (0 = pakai ATR-based SL) |
+| `--real` | off | Akun real ~$60 USD: 1 order, lot 0.10, multi-TP + trailing, ML 70% wajib |
 | `--micro` | off | Mode akun mikro <1 juta IDR: 1 order, lot min, filter ketat |
 | `--force-trade` | - | Paksa order: `BUY` atau `SELL` |
 | `--lstm` | off | Aktifkan LSTM (butuh TensorFlow) |

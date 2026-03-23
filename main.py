@@ -1,18 +1,3 @@
-"""
-=============================================================
-  TRADING ROBOT - EUR/USD & GOLD/USD
-  Yahoo Finance Data | ML + Rule-Based | Candle Predictor
-=============================================================
-
-Usage:
-  python main.py                         # Default (EURUSD, 1h)
-  python main.py --symbol GOLD           # Gold/USD
-  python main.py --symbol EURUSD --tf 15m
-  python main.py --symbol EURUSD --backtest
-  python main.py --symbol GOLD --live    # Live mode (auto refresh)
-  python main.py --tune                  # Tampilkan info tuning
-=============================================================
-"""
 import argparse
 import time
 import sys
@@ -53,7 +38,9 @@ def parse_args():
     parser.add_argument("--orders",      type=int,   default=15,    help="Jumlah order sekaligus saat sinyal masuk (default: 15)")
     parser.add_argument("--lot",         type=float, default=0.01,  help="Lot size per order (default: 0.01)")
     parser.add_argument("--micro",       action="store_true",       help="Mode akun mikro (<1 juta IDR) — 1 order, lot 0.01, filter ketat, ML wajib setuju")
+    parser.add_argument("--real",        action="store_true",       help="Mode akun real kecil (~$60) — 1 order, lot 0.10, target $15-20/trade, multi-TP + trailing otomatis")
     parser.add_argument("--multi-tp",   action="store_true",       help="Partial close: kunci profit 50%% di TP1, sisanya jalan ke TP2")
+    parser.add_argument("--risk",        type=float, default=0.0,   help="Maksimal kerugian per order dalam USD (misal: --risk 1.0). 0 = pakai ATR")
     return parser.parse_args()
 
 
@@ -97,6 +84,55 @@ def show_tuning_guide():
 """)
 
 
+def _print_current_candle(df_ind, signal: dict = None) -> None:
+    from config import EMA_SLOW, EMA_TREND
+    GREEN  = "\033[92m"
+    RED    = "\033[91m"
+    YELLOW = "\033[93m"
+    CYAN   = "\033[96m"
+    BOLD   = "\033[1m"
+    RESET  = "\033[0m"
+
+    row    = df_ind.iloc[-1]
+    ts     = str(df_ind.index[-1])[:16]
+    open_  = float(row.get("Open",  0))
+    close  = float(row.get("Close", 0))
+    high   = float(row.get("High",  0))
+    low    = float(row.get("Low",   0))
+    body   = round(abs(close - open_), 2)
+    wick_u = round(high - max(open_, close), 2)
+    wick_d = round(min(open_, close) - low, 2)
+    rsi    = round(float(row.get("rsi", 50)), 1)
+    adx    = round(float(row.get("adx",  0)), 1)
+    atr    = round(float(row.get("atr",  0)), 2)
+    macd   = round(float(row.get("macd", 0)), 3)
+    hist   = round(float(row.get("histogram", 0)), 3)
+    ema20  = float(row.get(f"ema_{EMA_SLOW}",  close))
+    ema50  = float(row.get(f"ema_{EMA_TREND}", close))
+    pat    = str(row.get("candle_name", "")).replace("↑","").replace("↓","")[:16]
+
+    dir_   = "BULLISH" if close > open_ else "BEARISH" if close < open_ else "DOJI"
+    dc     = GREEN if dir_ == "BULLISH" else RED if dir_ == "BEARISH" else YELLOW
+    ema_dir = "↑ BULL" if ema20 > ema50 else "↓ BEAR"
+    ema_c   = GREEN if ema20 > ema50 else RED
+
+    sig_dir = signal.get("direction", "WAIT") if signal else "WAIT"
+    sc      = GREEN if sig_dir == "BUY" else RED if sig_dir == "SELL" else YELLOW
+    sl      = signal.get("sl", "-") if signal else "-"
+    tp      = signal.get("tp", "-") if signal else "-"
+
+    print(f"\n  {BOLD}┌─ CANDLE SEKARANG ─ {ts} ─────────────────────────┐{RESET}")
+    print(f"  │  {dc}{dir_:<8}{RESET}  Close:{close:>8.2f}  Body:{body:>6.2f}  "
+          f"WickU:{wick_u:>5.2f}  WickD:{wick_d:>5.2f}")
+    print(f"  │  RSI:{rsi:>5.1f}  ADX:{adx:>5.1f}  ATR:{atr:>6.2f}  "
+          f"MACD:{macd:>+7.3f}  Hist:{hist:>+7.3f}")
+    print(f"  │  EMA20>50: {ema_c}{ema_dir}{RESET}  "
+          + (f"Pattern: {CYAN}{pat}{RESET}" if pat and pat != "nan" else "Pattern: -"))
+    print(f"  │  Signal: {sc}{BOLD}{sig_dir}{RESET}"
+          + (f"  SL:{sl}  TP:{tp}" if sig_dir in ("BUY","SELL") else ""))
+    print(f"  {BOLD}└──────────────────────────────────────────────────────┘{RESET}")
+
+
 def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
                  force_trade: str = None):
     if not bot.load_data():
@@ -104,13 +140,27 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         return False, None
 
     bot.train_model()
-    result = bot.analyze()
+
+    # Candle memory — cari pola serupa dari histori sebelum generate sinyal
+    from data.candle_log import find_similar_candles, print_similar_report, log_candle, print_recent, print_signal_candles
+    candle_memory = None
+    if bot.df_ind is not None and not bot.df_ind.empty:
+        candle_memory = find_similar_candles(bot.symbol, bot.timeframe, bot.df_ind.iloc[-1])
+        print_similar_report(candle_memory)
+
+    result = bot.analyze(candle_memory=candle_memory)
     bot.print_analysis(result)
 
-    # Log pergerakan candle setiap cycle
-    from data.candle_log import log_candle, print_recent
+    from analysis.signals import print_filter_log
+    sig = result.get("signal", {})
+    if sig:
+        print_filter_log(sig.get("filters", {}), sig.get("direction", "WAIT"))
+
     log_candle(bot.symbol, bot.timeframe, bot.df_ind, result.get("signal"))
-    print_recent(bot.symbol, bot.timeframe, n=8)
+
+    # Tampilkan hanya candle yang sedang berjalan
+    if bot.df_ind is not None and not bot.df_ind.empty:
+        _print_current_candle(bot.df_ind, result.get("signal"))
 
     if executor:
         sig       = result.get("signal", {})
@@ -228,6 +278,19 @@ def main():
         config.MIN_SIGNAL_SCORE = config.MICRO_MIN_SCORE
         config.ADX_TREND_MIN    = config.MICRO_ADX_MIN
 
+    if args.real:
+        import config
+        args.lot       = config.REAL_LOT
+        args.orders    = config.REAL_MAX_ORDERS
+        args.dca       = 0.0
+        args.trail     = config.REAL_TRAIL_PIPS
+        args.multi_tp  = True
+        config.MULTI_TP_ENABLED    = True
+        config.ADX_TREND_MIN       = config.REAL_ADX_MIN
+        config.MIN_SIGNAL_SCORE    = 6
+        config.ATR_MULTIPLIER_SL   = config.REAL_ATR_SL
+        config.ATR_MULTIPLIER_TP   = config.REAL_ATR_TP
+
     if args.multi_tp:
         import config
         config.MULTI_TP_ENABLED = True
@@ -275,17 +338,37 @@ def main():
     if args.micro:
         print("""
   ╔══════════════════════════════════════════════════╗
-  ║       ⚡ MODE AKUN MIKRO  (<1 JUTA IDR)          ║
+  ║       MODE AKUN MIKRO  (<1 JUTA IDR)            ║
   ║  Filter ketat — 1 order — ML wajib setuju       ║
   ╚══════════════════════════════════════════════════╝""")
         print(f"  Modal estimasi : <Rp 1.000.000  (~$65 USD)")
-        print(f"  Risk per trade : {MICRO_RISK_PCT}% modal  (~Rp {int(1_000_000 * MICRO_RISK_PCT / 100):,})")
-        print(f"  Lot maksimum   : {MICRO_LOT} lot/trade")
-        print(f"  Max order aktif: {MICRO_MAX_ORDERS} posisi (tidak boleh tumpuk)")
-        print(f"  ML min conf    : {MICRO_ML_CONF}%  (mode normal: 65%)")
-        print(f"  ADX minimum    : {MICRO_ADX_MIN}  (mode normal: {ADX_TREND_MIN})")
-        print(f"  Min skor sinyal: {MIN_SIGNAL_SCORE}/10  (mode normal: 5)")
-        print(f"  DCA            : OFF (dinonaktifkan, modal terlalu kecil)")
+        print(f"  Risk per trade : {MICRO_RISK_PCT}% modal")
+        print(f"  Lot            : {MICRO_LOT} lot/trade")
+        print(f"  Max order aktif: {MICRO_MAX_ORDERS} posisi (tidak tumpuk)")
+        print(f"  ML min conf    : {MICRO_ML_CONF}%")
+        print(f"  ADX minimum    : {MICRO_ADX_MIN}")
+        print(f"  Min skor sinyal: {MIN_SIGNAL_SCORE}/10")
+        print(f"  DCA            : OFF")
+        print()
+
+    if args.real:
+        print("""
+  ╔══════════════════════════════════════════════════╗
+  ║       MODE AKUN REAL  (~$60 USD)                ║
+  ║  Target $15-20/trade — Multi-TP + Trailing      ║
+  ╚══════════════════════════════════════════════════╝""")
+        print(f"  Modal estimasi : ~$60 USD")
+        print(f"  Lot            : {REAL_LOT} lot/trade  (~$1/pip XAUUSD)")
+        print(f"  Max order aktif: {REAL_MAX_ORDERS} posisi (tidak tumpuk)")
+        print(f"  SL             : {REAL_ATR_SL}x ATR  (RR 1:{int(REAL_ATR_TP / REAL_ATR_SL)})")
+        print(f"  TP             : {REAL_ATR_TP}x ATR")
+        print(f"  Partial close  : 50% tutup di TP1 → profit dikunci")
+        print(f"  Trailing stop  : {REAL_TRAIL_PIPS:.0f} pips aktif setelah TP1")
+        print(f"  Breakeven      : otomatis setelah profit = jarak SL")
+        print(f"  ML min conf    : {REAL_ML_CONF}%")
+        print(f"  ADX minimum    : {REAL_ADX_MIN}")
+        print(f"  Min skor sinyal: 6/10")
+        print(f"  DCA            : OFF")
         print()
 
     print(f"  Symbol    : {symbol}  —  {desc}")
@@ -299,6 +382,9 @@ def main():
     total_lot = round(args.lot * args.orders, 2)
     print(f"  Lot       : {args.lot} × {args.orders} order  =  {total_lot} lot total")
 
+    if args.risk > 0:
+        total_risk = round(args.risk * args.orders, 2)
+        print(f"  Risk/order: max ${args.risk:.2f} loss  (total: max ${total_risk:.2f} jika semua SL)")
     if args.dca > 0:
         print(f"  DCA       : pasang order tiap {args.dca:.0f} menit selama sinyal sama")
     if args.multi_tp:
@@ -324,7 +410,9 @@ def main():
                                          dca_minutes=args.dca,
                                          bulk_orders=args.orders,
                                          fixed_lot=args.lot,
-                                         strict_mode=args.micro)
+                                         strict_mode=args.micro,
+                                         risk_per_trade=args.risk,
+                                         real_mode=args.real)
                 if args.mt_status:
                     mt5_conn.print_status()
                     return
@@ -349,7 +437,6 @@ def main():
                      tv_user=args.tv_user or None,
                      tv_pass=args.tv_pass or None)
 
-    # Fetch news sekali di awal — jadi bias tetap untuk hari ini
     bot.fetch_news()
     if bot.news_filter and bot.news_sentiment:
         bot.news_filter.print_news_report(bot.news_sentiment)
@@ -363,7 +450,6 @@ def main():
             while True:
                 cycle += 1
 
-                # Refresh news hanya saat ganti hari
                 if date.today() != news_date:
                     print("\n[~] Hari baru — refresh bias berita...")
                     bot.fetch_news()
