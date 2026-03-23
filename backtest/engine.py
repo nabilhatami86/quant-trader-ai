@@ -13,7 +13,7 @@ def run_backtest(df_raw: pd.DataFrame, symbol: str = "") -> dict:
     Jalankan backtest pada DataFrame OHLCV.
     Returns dict hasil backtest lengkap.
     """
-    df = add_all_indicators(df_raw)
+    df = add_all_indicators(df_raw, max_rows=0)  # backtest butuh semua data
     trades = []
     capital = float(INITIAL_CAPITAL)
     in_trade = False

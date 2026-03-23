@@ -93,8 +93,20 @@ def _print_current_candle(df_ind, signal: dict = None) -> None:
     BOLD   = "\033[1m"
     RESET  = "\033[0m"
 
+    from datetime import timezone, timedelta
+    WIB    = timezone(timedelta(hours=7))
     row    = df_ind.iloc[-1]
-    ts     = str(df_ind.index[-1])[:16]
+    raw_ts = df_ind.index[-1]
+    try:
+        # Konversi UTC → WIB untuk tampilan
+        import pandas as pd
+        if hasattr(raw_ts, "tzinfo") and raw_ts.tzinfo is not None:
+            ts = raw_ts.astimezone(WIB).strftime("%Y-%m-%d %H:%M") + " WIB"
+        else:
+            ts = (pd.Timestamp(raw_ts).tz_localize("UTC")
+                    .tz_convert(WIB).strftime("%Y-%m-%d %H:%M")) + " WIB"
+    except Exception:
+        ts = str(raw_ts)[:16]
     open_  = float(row.get("Open",  0))
     close  = float(row.get("Close", 0))
     high   = float(row.get("High",  0))
@@ -139,7 +151,10 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         print("[!] Gagal load data. Cek koneksi internet.")
         return False, None
 
-    bot.train_model()
+    from joblib import parallel_backend
+    with parallel_backend("threading", n_jobs=1):
+        bot.train_model()
+
 
     # Candle memory — cari pola serupa dari histori sebelum generate sinyal
     from data.candle_log import find_similar_candles, print_similar_report, log_candle, print_recent, print_signal_candles
@@ -161,6 +176,9 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
     # Tampilkan hanya candle yang sedang berjalan
     if bot.df_ind is not None and not bot.df_ind.empty:
         _print_current_candle(bot.df_ind, result.get("signal"))
+
+    # ── Simpan hasil ke DB ────────────────────────────────────────
+    _order_result = None
 
     if executor:
         sig       = result.get("signal", {})
@@ -196,8 +214,12 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             if result_order.get("success"):
                 print(f"[MT5] ✓ Order masuk! Ticket: #{result_order.get('ticket')}")
                 print(f"      {force_dir}  SL:{sig.get('sl')}  TP:{sig.get('tp')}")
+                _order_result = result_order
             else:
                 print(f"[MT5] ✗ Order gagal: {result_order.get('error')}")
+
+            from services.db_logger import save_cycle
+            save_cycle(result, bot, _order_result)
             return True, result
 
         exec_dir = result.get("exec_direction", "WAIT")
@@ -206,7 +228,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         print(f"\n[MT5] Keputusan: {exec_dir}  "
               f"(sumber: {exec_src})  |  News Risk: {news_risk}")
 
-        executor.manage_positions(sig)
+        executor.manage_positions(sig, df=bot.df_ind)
 
         if exec_dir in ("BUY", "SELL"):
             exec_result = executor.execute(sig, ml_pred, news_risk)
@@ -215,8 +237,11 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             elif exec_result.get("success"):
                 print(f"[MT5] ✓ Order masuk! Ticket: #{exec_result.get('ticket')}  "
                       f"SL:{sig.get('sl')}  TP:{sig.get('tp')}")
+                _order_result = exec_result
             elif exec_result.get("skipped"):
                 print(f"[MT5] Order di-skip: {exec_result.get('reason','posisi sudah ada / DCA menunggu')}")
+                from services.db_logger import save_order_skip
+                save_order_skip(result, exec_result.get("reason", "skipped"))
             else:
                 print(f"[MT5] Order gagal: {exec_result.get('error')}")
         else:
@@ -237,6 +262,10 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
                 tp=sig.get("tp", 0.0),
                 lot=DEFAULT_LOT,
             )
+
+    # Simpan ke DB setiap siklus
+    from services.db_logger import save_cycle
+    save_cycle(result, bot, _order_result)
 
     return True, result
 
@@ -441,9 +470,14 @@ def main():
     if bot.news_filter and bot.news_sentiment:
         bot.news_filter.print_news_report(bot.news_sentiment)
 
+    # Catat BOT_START ke DB
+    from services.db_logger import save_bot_start, save_bot_stop
+    mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS")
+    save_bot_start(symbol, timeframe, mode=mt_mode)
+
     if args.live:
-        mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS ONLY")
         print(f"[~] Live mode aktif [{mt_mode}]. Refresh setiap {REFRESH_INTERVAL}s (Ctrl+C untuk stop)\n")
+        print(f"[DB] Hasil analisis otomatis tersimpan ke PostgreSQL setiap siklus")
         cycle       = 0
         news_date   = date.today()
         try:
@@ -458,7 +492,8 @@ def main():
                     news_date = date.today()
 
                 print(f"\n{'-'*60}")
-                print(f"  Cycle #{cycle}  |  {__import__('datetime').datetime.now().strftime('%H:%M:%S')}")
+                from datetime import datetime, timezone, timedelta
+                print(f"  Cycle #{cycle}  |  {datetime.now(tz=timezone(timedelta(hours=7))).strftime('%H:%M:%S')} WIB")
                 print(f"{'-'*60}")
                 run_analysis(bot, executor=executor, mt4=mt4_bridge,
                              force_trade=args.force_trade)
@@ -470,11 +505,13 @@ def main():
                 time.sleep(REFRESH_INTERVAL)
         except KeyboardInterrupt:
             print("\n[OK] Live mode dihentikan.")
+            save_bot_stop(symbol, timeframe)
             if mt5_conn:
                 mt5_conn.disconnect()
     else:
         run_analysis(bot, executor=executor, mt4=mt4_bridge,
                      force_trade=args.force_trade)
+        save_bot_stop(symbol, timeframe)
         if mt5_conn:
             mt5_conn.print_status()
             mt5_conn.disconnect()

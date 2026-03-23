@@ -10,6 +10,10 @@ Contoh:
 """
 import argparse
 import sys
+import os
+
+# Tambahkan root project ke sys.path agar bisa dijalankan dari scripts/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DEFAULT_SYMBOL, DEFAULT_TIMEFRAME, SYMBOLS
 
@@ -62,22 +66,80 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
 
     print(f"  Indikator: OK ({len(df_ind)} candle valid)")
 
-    # 3. Simpan ke candle DB juga
+    # 3. Simpan ke candle DB (CSV)
     from data.candle_db import save_candles
     saved_db = save_candles(df_raw, symbol, timeframe)
     if saved_db > 0:
-        print(f"  Candle DB : +{saved_db} candle baru")
+        print(f"  Candle DB : +{saved_db} candle baru  (CSV)")
 
-    # 4. Backfill candle log
+    # 4. Backfill candle log (CSV)
     from data.candle_log import backfill_candle_log
     added = backfill_candle_log(symbol, timeframe, df_ind)
-
     if added > 0:
-        print(f"  Candle Log: +{added} candle ditulis  ✓")
+        print(f"  Candle Log: +{added} candle ditulis  (CSV)")
     else:
-        print(f"  Candle Log: sudah up-to-date (tidak ada candle baru)")
+        print(f"  Candle Log: sudah up-to-date (CSV)")
+
+    # 5 + 6 + 7. Simpan semua ke PostgreSQL dalam satu event loop
+    import asyncio
+    pg_candles, pg_logs = asyncio.run(_save_all_pg(df_raw, df_ind, symbol, timeframe))
+    print(f"  PostgreSQL candles    : +{pg_candles} baris")
+    print(f"  PostgreSQL candle_logs: +{pg_logs} baris")
 
     print(f"[OK] {symbol} {timeframe} selesai\n")
+
+
+# ── Helper DB (satu event loop untuk semua operasi) ───────────────────────────
+
+async def _save_all_pg(df_raw, df_ind, symbol: str, timeframe: str):
+    """Satu coroutine untuk semua DB operations — hindari multi asyncio.run()."""
+    from db.database import AsyncSessionLocal, engine
+    from db.crud.candles import bulk_upsert_candles
+    from db.crud.candle_logs import bulk_upsert_candle_logs
+    from db.crud.tx_log import log_event
+
+    pg_candles = 0
+    pg_logs    = 0
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Candles (raw OHLCV)
+            try:
+                pg_candles = await bulk_upsert_candles(db, symbol, timeframe, df_raw)
+            except Exception as e:
+                print(f"  [!] candles error: {e}")
+
+            # Candle logs (OHLC + indikator)
+            try:
+                df = df_ind.copy()
+                df.columns = [c.lower() for c in df.columns]
+                pg_logs = await bulk_upsert_candle_logs(db, symbol, timeframe, df)
+            except Exception as e:
+                print(f"  [!] candle_logs error: {e}")
+
+            # tx_log BACKFILL event
+            try:
+                await log_event(
+                    db,
+                    event_type="BACKFILL",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    message=f"Backfill {symbol} {timeframe}: {len(df_raw)} candles",
+                    meta={
+                        "total_fetched":  len(df_raw),
+                        "pg_candles":     pg_candles,
+                        "pg_candle_logs": pg_logs,
+                    },
+                )
+            except Exception as e:
+                print(f"  [!] tx_log error: {e}")
+    except Exception as e:
+        print(f"  [!] PostgreSQL connection error: {e}")
+    finally:
+        # Tutup semua koneksi agar event loop bisa ditutup bersih
+        await engine.dispose()
+
+    return pg_candles, pg_logs
 
 
 def main():

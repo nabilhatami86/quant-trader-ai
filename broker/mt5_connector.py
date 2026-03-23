@@ -36,7 +36,7 @@ SYMBOL_MAP = {
 }
 
 DEFAULT_LOT  = 0.01
-MAX_LOT      = 0.03
+MAX_LOT      = 0.10
 SLIPPAGE     = 10
 MAGIC_NUMBER = 202601
 BOT_COMMENT  = "TraderAI-Bot"
@@ -132,6 +132,112 @@ class MT5Connector:
             "spread": si.get("spread", 0),
         }
 
+    def calculate_auto_lot(self, min_lot: float = 0.01,
+                           max_lot: float = 0.50) -> float:
+        from config import REAL_AUTO_LOT_MIN, REAL_AUTO_LOT_MAX
+        self._refresh_account()
+        balance = self.account.get("balance", 0)
+        if balance <= 0:
+            return min_lot
+
+        # setiap $100 = 0.01 lot
+        raw  = balance / 10000.0
+        step = 0.01
+        lot  = round(round(raw / step) * step, 2)
+        lot  = max(REAL_AUTO_LOT_MIN, min(REAL_AUTO_LOT_MAX, lot))
+
+        GREEN = "\033[92m"
+        BOLD  = "\033[1m"
+        RESET = "\033[0m"
+        print(f"  {BOLD}[AUTO-LOT]{RESET} Saldo ${balance:,.2f} "
+              f"→ Lot {GREEN}{BOLD}{lot}{RESET} "
+              f"(range {REAL_AUTO_LOT_MIN}–{REAL_AUTO_LOT_MAX})")
+        return lot
+
+    def calculate_signal_lot(self, base_lot: float,
+                              signal_score: float = 0,
+                              ml_confidence: float = 0,
+                              symbol_key: str = "",
+                              min_lot: float = 0.01,
+                              max_lot: float = 0.50) -> float:
+        """
+        Lot dinamis berdasarkan kekuatan sinyal:
+
+        Base lot  → dari risk-based calculation (balance/SL)
+        Multiplier dari score:
+          score < 5        → 1.0x  (lemah — base saja)
+          score 5–8        → 1.3x  (cukup bagus)
+          score 8–12       → 1.7x  (bagus)
+          score ≥ 12       → 2.0x  (sangat kuat)
+
+        Bonus dari ML confidence:
+          conf 75–84%      → +0.2x tambahan
+          conf ≥ 85%       → +0.4x tambahan
+          (hanya berlaku jika score ≥ 5)
+
+        Safety check: lot tidak boleh melebihi 40% free margin.
+        """
+        GREEN  = "\033[92m"
+        YELLOW = "\033[93m"
+        BOLD   = "\033[1m"
+        RESET  = "\033[0m"
+
+        abs_score = abs(signal_score)
+
+        # Score multiplier
+        if abs_score >= 12:
+            score_mult = 2.0
+            tier = "SANGAT KUAT ≥12"
+        elif abs_score >= 8:
+            score_mult = 1.7
+            tier = "KUAT 8-12"
+        elif abs_score >= 5:
+            score_mult = 1.3
+            tier = "CUKUP 5-8"
+        else:
+            score_mult = 1.0
+            tier = "LEMAH <5"
+
+        # ML confidence bonus
+        conf_bonus = 0.0
+        if abs_score >= 5:
+            if ml_confidence >= 85:
+                conf_bonus = 0.4
+            elif ml_confidence >= 75:
+                conf_bonus = 0.2
+
+        total_mult = score_mult + conf_bonus
+
+        raw_lot = base_lot * total_mult
+
+        # Snap ke step 0.01
+        step    = 0.01
+        raw_lot = round(round(raw_lot / step) * step, 2)
+
+        # Margin safety check — jangan pakai lebih dari 40% free margin
+        self._refresh_account()
+        free_margin = self.account.get("margin_free", 0)
+        if free_margin > 0 and symbol_key:
+            si = self.get_symbol_info(symbol_key)
+            if si:
+                # Estimasi margin per lot (kasar: leverage-based)
+                leverage  = self.account.get("leverage", 100)
+                ask       = si.get("ask", 1)
+                lot_size  = 100_000   # standar forex
+                margin_per_lot = (ask * lot_size) / max(leverage, 1)
+                max_affordable = (free_margin * 0.4) / max(margin_per_lot, 1)
+                max_affordable = round(round(max_affordable / step) * step, 2)
+                if max_affordable > 0:
+                    raw_lot = min(raw_lot, max_affordable)
+
+        final_lot = max(min_lot, min(max_lot, raw_lot))
+        color = GREEN if final_lot > base_lot else YELLOW
+        print(f"  {BOLD}[SIGNAL-LOT]{RESET} Score {signal_score:+.1f} ({tier}) "
+              f"| ML {ml_confidence:.0f}% "
+              f"| Mult ×{total_mult:.1f} "
+              f"| Base {base_lot} → {color}{BOLD}{final_lot}{RESET} lot")
+        return final_lot
+
     def calculate_lot(self, symbol_key: str, sl_pips: float,
                       risk_percent: float = RISK_PERCENT) -> float:
         self._refresh_account()
@@ -207,6 +313,20 @@ class MT5Connector:
             sl_pips = abs(price - sl) / si["point"] / 10 if sl else 20
             lot     = self.calculate_lot(symbol_key, sl_pips)
 
+        # Validasi SL — kalau SL di sisi yang salah dari entry, recalculate dari ATR
+        digits = si.get("digits", 2)
+        if sl:
+            if direction == "BUY" and sl >= price:
+                from config import ATR_MULTIPLIER_SL
+                atr = abs(price - sl)   # pakai selisih sebagai estimasi ATR
+                sl  = round(price - max(atr, si["point"] * 50), digits)
+                print(f"[!] SL dikoreksi — SL lama di atas entry, dipindah ke {sl:.2f}")
+            elif direction == "SELL" and sl <= price:
+                from config import ATR_MULTIPLIER_SL
+                atr = abs(sl - price)
+                sl  = round(price + max(atr, si["point"] * 50), digits)
+                print(f"[!] SL dikoreksi — SL lama di bawah entry, dipindah ke {sl:.2f}")
+
         request = {
             "action":       mt5.TRADE_ACTION_DEAL,
             "symbol":       symbol,
@@ -221,6 +341,9 @@ class MT5Connector:
             "type_time":    mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
+
+        print(f"[MT5] Kirim order → symbol:{symbol} dir:{direction} "
+              f"lot:{lot} price:{price:.2f} sl:{request['sl']} tp:{request['tp']}")
 
         result = mt5.order_send(request)
 
@@ -639,7 +762,7 @@ class SignalExecutor:
             return True
 
         if self.real_mode:
-            from config import REAL_ML_CONF
+            from config import REAL_ML_CONF, REAL_MAX_STACK
             min_conf = self.ml_min_conf or REAL_ML_CONF
             if not ml_pred or ml_pred.get("direction") == "WAIT":
                 print(f"  [REAL] Trade dibatalkan — ML tidak ada prediksi")
@@ -655,8 +778,13 @@ class SignalExecutor:
                 return False
             all_pos = self.mt5.get_all_positions(self.symbol)
             if all_pos:
-                print(f"  [REAL] Sudah ada {len(all_pos)} posisi aktif — tunggu tutup dulu")
-                return False
+                same = [p for p in all_pos if p["direction"] == direction]
+                if len(same) >= REAL_MAX_STACK:
+                    print(f"  [REAL] Sudah {len(same)} posisi {direction} — "
+                          f"batas tumpuk {REAL_MAX_STACK}x tercapai")
+                    return False
+                print(f"  [REAL] Posisi {direction}: {len(same)}/{REAL_MAX_STACK} — "
+                      f"sinyal bagus, pasang lagi")
             return True
 
         if ml_pred and ml_pred.get("direction") not in (direction, "WAIT"):
@@ -676,11 +804,17 @@ class SignalExecutor:
                 return False
             return True
 
-        # Max 1 posisi aktif per symbol (general mode)
+        # Cek tumpuk posisi searah (general mode)
+        from config import MAX_STACK
         all_pos = self.mt5.get_all_positions(self.symbol)
         if all_pos:
-            print(f"[~] Sudah ada {len(all_pos)} posisi aktif — tunggu tutup dulu")
-            return False
+            same = [p for p in all_pos if p["direction"] == direction]
+            if len(same) >= MAX_STACK:
+                print(f"[~] Sudah {len(same)} posisi {direction} — "
+                      f"batas tumpuk {MAX_STACK}x tercapai")
+                return False
+            print(f"[~] Posisi {direction}: {len(same)}/{MAX_STACK} — "
+                  f"sinyal masih bagus, pasang lagi")
 
         return True
 
@@ -705,13 +839,51 @@ class SignalExecutor:
         if not self.should_trade(signal, ml_pred or {}):
             return {"success": False, "skipped": True}
 
+        # Ambil harga sekarang dulu — dipakai untuk lot calc + SL resolve
+        si    = self.mt5.get_symbol_info(self.symbol)
+        price = si.get("ask" if direction == "BUY" else "bid", 0) if si else 0
+        sl    = self._resolve_sl(direction, price, sl, self.fixed_lot or 0.01)
+
+        # Signal strength info untuk dynamic lot
+        sig_score  = float(signal.get("score", 0))
+        ml_conf    = float(ml_pred.get("confidence", 0)) if ml_pred else 0.0
+
         lot = self.fixed_lot
+        if self.real_mode:
+            from config import (REAL_AUTO_LOT, REAL_AUTO_LOT_MIN,
+                                REAL_AUTO_LOT_MAX, REAL_RISK_PCT)
+            if REAL_AUTO_LOT:
+                if sl and price and sl != price:
+                    # Step 1: hitung base lot dari risk
+                    sl_pips  = abs(price - sl) / (si.get("point", 0.01) * 10)
+                    base_lot = self.mt5.calculate_lot(
+                        self.symbol, sl_pips, REAL_RISK_PCT
+                    )
+                    base_lot = max(REAL_AUTO_LOT_MIN, min(REAL_AUTO_LOT_MAX, base_lot))
+
+                    # Step 2: scale up berdasarkan kekuatan sinyal
+                    lot = self.mt5.calculate_signal_lot(
+                        base_lot,
+                        signal_score=sig_score,
+                        ml_confidence=ml_conf,
+                        symbol_key=self.symbol,
+                        min_lot=REAL_AUTO_LOT_MIN,
+                        max_lot=REAL_AUTO_LOT_MAX,
+                    )
+                else:
+                    # Tidak ada SL — pakai auto lot lalu scale
+                    base_lot = self.mt5.calculate_auto_lot(REAL_AUTO_LOT_MIN, REAL_AUTO_LOT_MAX)
+                    lot = self.mt5.calculate_signal_lot(
+                        base_lot,
+                        signal_score=sig_score,
+                        ml_confidence=ml_conf,
+                        symbol_key=self.symbol,
+                        min_lot=REAL_AUTO_LOT_MIN,
+                        max_lot=REAL_AUTO_LOT_MAX,
+                    )
 
         n = self.bulk_orders
         if n > 1:
-            si    = self.mt5.get_symbol_info(self.symbol)
-            price = si.get("ask" if direction == "BUY" else "bid", 0)
-            sl    = self._resolve_sl(direction, price, sl, lot)
 
             success_tickets = []
             failed          = 0
@@ -766,9 +938,26 @@ class SignalExecutor:
                 "direction": direction,
             }
 
-        si    = self.mt5.get_symbol_info(self.symbol)
-        price = si.get("ask" if direction == "BUY" else "bid", 0) if si else 0
-        sl    = self._resolve_sl(direction, price, sl, lot)
+        # Saat stacking: gunakan SL yang paling jauh dari harga saat ini
+        # agar posisi lama tidak kena SL duluan
+        existing = self.mt5.get_positions(self.symbol)
+        same_dir = [p for p in existing if p["direction"] == direction]
+        if same_dir and sl:
+            existing_sls = [p["sl"] for p in same_dir if p.get("sl")]
+            if existing_sls:
+                if direction == "BUY":
+                    # BUY: SL di bawah harga — pakai yg paling rendah (paling jauh)
+                    sl = min(sl, min(existing_sls))
+                else:
+                    # SELL: SL di atas harga — pakai yg paling tinggi (paling jauh)
+                    sl = max(sl, max(existing_sls))
+
+                # Update SL posisi lama agar semua sejajar
+                for pos in same_dir:
+                    if pos.get("sl") != sl:
+                        res = self.mt5.modify_position(pos["ticket"], sl=sl)
+                        if res.get("success"):
+                            print(f"  [STACK] #{pos['ticket']} SL disejajarkan → {sl:.5f}")
 
         result = self.mt5.place_order(
             symbol_key=self.symbol,
@@ -911,6 +1100,92 @@ class SignalExecutor:
                         print(f"[BE] Breakeven aktif #{ticket} SELL — "
                               f"SL digeser ke {breakeven_sl:.5f}")
 
+    def check_abnormal_movement(self, df=None) -> None:
+        if df is None or df.empty or len(df) < 3:
+            return
+
+        si = self.mt5.get_symbol_info(self.symbol)
+        if not si:
+            return
+
+        RED   = "\033[91m"
+        BOLD  = "\033[1m"
+        RESET = "\033[0m"
+
+        last   = df.iloc[-1]
+        atr    = float(last.get("atr", 0))
+        if atr <= 0:
+            return
+
+        body      = abs(float(last["Close"]) - float(last["Open"]))
+        direction = "BULL" if float(last["Close"]) > float(last["Open"]) else "BEAR"
+
+        # Candle dianggap abnormal jika body > 4x ATR (spike ekstrem saja)
+        if body < atr * 4.0:
+            return
+
+        # Analisis candle anomali
+        last_row  = df.iloc[-1]
+        prev_row  = df.iloc[-2]
+        high      = float(last_row["High"])
+        low       = float(last_row["Low"])
+        open_     = float(last_row["Open"])
+        close_    = float(last_row["Close"])
+        wick_up   = round(high - max(open_, close_), 2)
+        wick_down = round(min(open_, close_) - low, 2)
+        full_range = round(high - low, 2)
+        body_pct  = round(body / full_range * 100, 1) if full_range > 0 else 0
+        prev_body = abs(float(prev_row["Close"]) - float(prev_row["Open"]))
+        body_vs_prev = round(body / prev_body, 1) if prev_body > 0 else 0
+        rsi       = round(float(last_row.get("rsi", 50)), 1)
+
+        anomaly_reasons = []
+        if body >= atr * 4.0:
+            anomaly_reasons.append(f"body {body:.2f} = {body/atr:.1f}x ATR (normal max ~2x)")
+        if body_vs_prev >= 3:
+            anomaly_reasons.append(f"body {body_vs_prev}x lebih besar dari candle sebelumnya")
+        if body_pct >= 85:
+            anomaly_reasons.append(f"hampir seluruh range adalah body ({body_pct}%) — momentum ekstrem")
+        if wick_up < 0.1 * full_range and direction == "BEAR":
+            anomaly_reasons.append("wick atas sangat kecil — tekanan jual dominan penuh")
+        if wick_down < 0.1 * full_range and direction == "BULL":
+            anomaly_reasons.append("wick bawah sangat kecil — tekanan beli dominan penuh")
+
+        for pos in self.mt5.get_all_positions(self.symbol):
+            ticket   = pos["ticket"]
+            pos_dir  = pos["direction"]
+
+            spike_against = (pos_dir == "BUY"  and direction == "BEAR") or \
+                            (pos_dir == "SELL" and direction == "BULL")
+
+            if not spike_against:
+                continue
+
+            pnl    = pos.get("profit", 0)
+            entry  = pos.get("open_price", 0)
+            sl     = pos.get("sl", 0)
+            YELLOW = "\033[93m"
+
+            print(f"\n  {'='*54}")
+            print(f"  {BOLD}{RED}⚠  ANOMALI PERGERAKAN TERDETEKSI{RESET}")
+            print(f"  {'='*54}")
+            print(f"  Candle  : {direction}  O:{open_:.2f}  H:{high:.2f}  "
+                  f"L:{low:.2f}  C:{close_:.2f}")
+            print(f"  Body    : {body:.2f} pts  ({body/atr:.1f}x ATR)  "
+                  f"WickU:{wick_up:.2f}  WickD:{wick_down:.2f}")
+            print(f"  RSI     : {rsi}  {'↑ rising' if rsi > float(prev_row.get('rsi',50)) else '↓ falling'}")
+            print(f"\n  {BOLD}Kenapa dianggap anomali:{RESET}")
+            for i, reason in enumerate(anomaly_reasons, 1):
+                print(f"    {YELLOW}{i}. {reason}{RESET}")
+            print(f"\n  {BOLD}Dampak ke posisi #{ticket} {pos_dir}:{RESET}")
+            print(f"    Entry  : {entry:.2f}")
+            print(f"    SL     : {sl:.2f}  →  jarak {abs(entry-sl):.2f} pts dari entry")
+            print(f"    P&L    : {RED if pnl < 0 else ''}{pnl:+.2f}{RESET}")
+            print(f"\n  {RED}{BOLD}→ Posisi ditutup paksa sebelum SL kena{RESET}")
+            print(f"  {'='*54}\n")
+
+            self.mt5.close_position(ticket)
+
     def check_sl_risk(self) -> None:
         si = self.mt5.get_symbol_info(self.symbol)
         if not si:
@@ -965,7 +1240,7 @@ class SignalExecutor:
                       f"| harga: {current_price:.5f}  SL: {sl:.5f} "
                       f"| P&L: ${pnl:+.2f}{RESET}")
 
-    def manage_positions(self, signal: dict) -> None:
+    def manage_positions(self, signal: dict, df=None) -> None:
         direction = signal.get("direction", "WAIT")
 
         for pos in self.mt5.get_positions(self.symbol):
@@ -974,6 +1249,7 @@ class SignalExecutor:
                 print(f"[~] Sinyal berbalik - menutup posisi #{pos['ticket']}")
                 self.mt5.close_position(pos["ticket"])
 
+        self.check_abnormal_movement(df)
         self.check_sl_risk()
         self.check_partial_tp()
         self.check_breakeven()

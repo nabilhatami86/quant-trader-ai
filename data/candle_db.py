@@ -19,12 +19,17 @@ def save_candles(df: pd.DataFrame, symbol: str, timeframe: str) -> int:
     df = df.copy()
     if not isinstance(df.index, pd.DatetimeIndex):
         df.index = pd.to_datetime(df.index)
+    # Normalisasi timezone — strip tz supaya bisa digabung dengan CSV (tz-naive)
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
 
     cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
     df = df[cols]
 
     if os.path.exists(path):
         existing  = pd.read_csv(path, index_col=0, parse_dates=True)
+        if existing.index.tz is not None:
+            existing.index = existing.index.tz_localize(None)
         merged    = pd.concat([existing, df])
         merged    = merged[~merged.index.duplicated(keep="last")]
         merged.sort_index(inplace=True)
@@ -79,6 +84,10 @@ def merge_with_db(df_new: pd.DataFrame, symbol: str, timeframe: str) -> pd.DataF
     df_new = df_new.copy()
     if not isinstance(df_new.index, pd.DatetimeIndex):
         df_new.index = pd.to_datetime(df_new.index)
+    if df_new.index.tz is not None:
+        df_new.index = df_new.index.tz_localize(None)
+    if df_old.index.tz is not None:
+        df_old.index = df_old.index.tz_localize(None)
 
     cols   = [c for c in ["Open", "High", "Low", "Close", "Volume"]
               if c in df_new.columns and c in df_old.columns]

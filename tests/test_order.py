@@ -9,6 +9,10 @@ Jalankan:
 """
 import argparse
 import sys
+import os
+
+# Tambahkan root project ke sys.path agar bisa dijalankan dari tests/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import MetaTrader5 as _mt5

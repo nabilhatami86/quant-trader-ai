@@ -235,10 +235,8 @@ void WriteLog(string msg)
     def save_ea_file(self, output_path: str = None) -> str:
         """Simpan file EA .mq4 ke disk"""
         if not output_path:
-            output_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "EA_TraderAI.mq4"
-            )
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            output_path = os.path.join(root, "scripts", "mt4", "EA_TraderAI.mq4")
         code = self.generate_ea_code()
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(code)

@@ -4,7 +4,9 @@ Trading Bot - Data Fetcher & Main Logic
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+WIB = timezone(timedelta(hours=7))
 import time
 import sys
 
@@ -45,7 +47,9 @@ def fetch_data(symbol_key: str = DEFAULT_SYMBOL,
 
 
 def get_market_session() -> str:
-    hour = datetime.utcnow().hour
+    """Deteksi sesi berdasarkan UTC (standar pasar forex)."""
+    from datetime import timezone
+    hour = datetime.now(tz=timezone.utc).hour
     if 22 <= hour or hour < 7:
         return "Sydney/Tokyo"
     elif 7 <= hour < 12:
@@ -70,7 +74,7 @@ class TradingBot:
         self.use_tv        = use_tv
         self.tv_user       = tv_user
         self.tv_pass       = tv_pass
-        self.predictor     = CandlePredictor(timeframe=timeframe)
+        self.predictor     = CandlePredictor(symbol=symbol, timeframe=timeframe)
         self.lstm          = LSTMPredictor(timeframe=timeframe) if self.use_lstm else None
         self.news_filter   = NewsFilter(symbol=symbol) if use_news else None
         self.df            = pd.DataFrame()
@@ -126,8 +130,20 @@ class TradingBot:
 
         self.df      = raw      # candle terbaru (untuk sinyal)
         self.df_hist = merged   # seluruh historis (untuk training)
-        self.df_ind  = add_all_indicators(raw)
-        self.df_ind_hist = add_all_indicators(merged) if len(merged) > len(raw) else self.df_ind
+        # max_rows=1000: analisis cukup 1000 candle terakhir (lebih cepat)
+        self.df_ind  = add_all_indicators(raw, max_rows=1000)
+        # Training butuh semua data → max_rows=0 (tanpa batas)
+        self.df_ind_hist = add_all_indicators(merged, max_rows=0) if len(merged) > len(raw) else self.df_ind
+
+        # ── Simpan ke PostgreSQL untuk analisa ────────────────────────
+        try:
+            from services.db_logger import save_candles_batch, save_candle_logs_batch
+            n_c = save_candles_batch(merged, self.symbol, self.timeframe)
+            n_l = save_candle_logs_batch(self.df_ind_hist, self.symbol, self.timeframe)
+            if n_c > 0 or n_l > 0:
+                print(f"[PG]  +{n_c} candles | +{n_l} candle_logs → PostgreSQL")
+        except Exception as _pg_err:
+            pass  # PostgreSQL opsional, jangan block bot
 
         print(f"[OK] {len(self.df_ind)} candles aktif | "
               f"{len(self.df_ind_hist)} candles untuk training ML")
@@ -144,8 +160,11 @@ class TradingBot:
             train_data = self.df_ind
 
         print(f"[~] Training ML model ({ML_MODEL_TYPE.upper()}) "
-              f"dengan {len(train_data)} candles historis...")
-        result = self.predictor.train(train_data)
+              f"symbol={self.symbol} tf={self.timeframe} "
+              f"({len(train_data)} candles)...")
+        result = self.predictor.train(train_data,
+                                      symbol=self.symbol,
+                                      timeframe=self.timeframe)
         self.trained     = True
         self.train_result = result
         acc   = result['accuracy']
@@ -153,6 +172,7 @@ class TradingBot:
         grade = "EXCELLENT" if cacc >= 80 else "GOOD" if cacc >= 65 else "FAIR" if cacc >= 55 else "LOW"
         print(f"[OK] Model trained!")
         print(f"     ----------------------------------------")
+        print(f"     Symbol / Timeframe  : {result['trained_symbol']} / {result['trained_timeframe']}")
         print(f"     Overall Accuracy    : {acc}%")
         print(f"     Confident Accuracy  : {cacc}%  [{grade}]")
         print(f"     Precision BUY       : {result['precision_buy']}%")
@@ -206,7 +226,7 @@ class TradingBot:
         # ML prediction (Random Forest / Gradient Boosting)
         ml_pred = {}
         if ML_ENABLED and self.trained:
-            ml_pred = self.predictor.predict(self.df_ind)
+            ml_pred = self.predictor.predict(self.df_ind, predict_symbol=self.symbol)
 
         # LSTM prediction (Deep Learning)
         lstm_pred = {}
@@ -294,7 +314,7 @@ class TradingBot:
         result = {
             "symbol":       self.symbol,
             "timeframe":    self.timeframe,
-            "timestamp":    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp":    datetime.now(tz=WIB).strftime("%Y-%m-%d %H:%M:%S WIB"),
             "session":      get_market_session(),
             "close":        close,
             "open":         float(row["Open"]),
@@ -326,7 +346,10 @@ class TradingBot:
             "final_advice":    final_advice,
             "news_risk":       news_risk,
             "news_bias":       news_bias or {},
-            "news_sentiment": self.news_sentiment,
+            "news_sentiment":  self.news_sentiment,
+            # Sumber data — untuk audit di DB
+            "data_source":     "MT5" if (self.mt5_conn and self.mt5_conn.connected)
+                               else ("TV" if self.use_tv else "Yahoo"),
         }
         return result
 
@@ -380,9 +403,14 @@ class TradingBot:
 
         print(f"  {BOLD}--- RULE-BASED SIGNAL -----------------------------------{RESET}")
         tech_sc = sig.get("score_technical", sig["score"])
-        news_sc = sig.get("score_news", 0)
-        print(f"  Score       : {sig['score']:+.2f} / 10.0  "
-              f"(Teknikal: {tech_sc:+.2f}  |  Berita: {news_sc:+.2f})")
+        vol_sc  = sig.get("score_volume",   0)
+        smc_sc  = sig.get("score_smc",      0)
+        news_sc = sig.get("score_news",     0)
+        regime  = sig.get("regime",         "?")
+        regime_c = GREEN if regime == "TREND" else RED if regime == "VOLATILE" else YELLOW
+        print(f"  Score       : {sig['score']:+.2f}  "
+              f"| Tech:{tech_sc:+.2f}  Vol:{vol_sc:+.2f}  SMC:{smc_sc:+.2f}  News:{news_sc:+.2f}")
+        print(f"  Regime      : {regime_c}{BOLD}{regime}{RESET}")
         print(f"  Direction   : {BOLD}{color}{direct}{RESET}")
         if sig["sl"]:
             m_tp   = sig.get("method_tp", "ATR")
@@ -422,8 +450,15 @@ class TradingBot:
         if ml:
             d = ml["direction"]
             ml_color = GREEN if d == "BUY" else RED if d == "SELL" else YELLOW
+            tr_sym = ml.get("trained_symbol", self.train_result.get("trained_symbol", self.symbol))
+            tr_tf  = ml.get("trained_tf",     self.train_result.get("trained_timeframe", self.timeframe))
+            tr_n   = ml.get("trained_candles", self.train_result.get("trained_n_candles", 0))
+            sym_ok = ml.get("symbol_match", True)
+            sym_c  = GREEN if sym_ok else RED
             print(f"  {BOLD}--- ML PREDICTION ----------------------------------------{RESET}")
-            print(f"  Model       : {ML_MODEL_TYPE.upper()} (Ensemble+FeatureSelect)")
+            print(f"  Model       : {ML_MODEL_TYPE.upper()} (Ensemble+FeatureSelect+SMC)")
+            print(f"  Trained on  : {sym_c}{BOLD}{tr_sym}{RESET} / {tr_tf}  ({tr_n:,} candles)"
+                  + (f"  {RED}[!] SYMBOL MISMATCH{RESET}" if not sym_ok else ""))
             print(f"  Overall Acc : {self.train_result.get('accuracy', 0)}%  |  "
                   f"Confident Acc: {BOLD}{self.train_result.get('conf_accuracy', 0)}%{RESET}")
             print(f"  Precision   : {self.train_result.get('precision_buy', 0)}%  |  "
@@ -431,6 +466,8 @@ class TradingBot:
             print(f"  Prediction  : {BOLD}{ml_color}{d}{RESET}  (confidence: {ml['confidence']}%)")
             if ml.get("uncertain"):
                 print(f"  {YELLOW}[!] Confidence di bawah threshold - sinyal lemah{RESET}")
+            if ml.get("warning"):
+                print(f"  {RED}[!] {ml['warning']}{RESET}")
             print(f"  Proba BUY   : {GREEN}{ml['proba_buy']}%{RESET}  |  Proba SELL: {RED}{ml['proba_sell']}%{RESET}")
             print(sep)
 

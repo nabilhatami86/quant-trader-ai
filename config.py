@@ -13,7 +13,7 @@ SYMBOLS = {
     "BTCUSD":   "BTC-USD",
 }
 DEFAULT_SYMBOL    = "XAUUSD"
-DEFAULT_TIMEFRAME = "1h"
+DEFAULT_TIMEFRAME = "5m"
 
 SYMBOL_DESC = {
     "GOLD":   "Gold Futures (CME)",
@@ -62,13 +62,29 @@ ADX_TREND_MIN    = 25
 # Sinyal
 MIN_SIGNAL_SCORE = 5
 WEIGHTS = {
-    "rsi":       2.0,
-    "macd":      2.0,
-    "ema_cross": 2.0,
-    "bb":        1.0,
-    "stoch":     1.5,
-    "adx":       1.0,
-    "candle":    0.5,
+    # Traditional indicators
+    "rsi":            2.0,
+    "macd":           2.0,
+    "ema_cross":      2.0,
+    "bb":             1.0,
+    "stoch":          1.5,
+    "adx":            1.0,
+    "candle":         0.5,
+    # Volume indicators
+    "obv":            1.5,   # On Balance Volume
+    "vwap":           1.5,   # Volume Weighted Average Price
+    "williams_r":     1.0,   # Williams %R
+    "cci":            1.0,   # Commodity Channel Index
+    "volume":         1.0,   # Volume spike + divergence
+    # Smart Money Concepts
+    "smc":            3.0,   # FVG + Order Block + BOS/ChoCH + Liquidity Sweep
+    "pattern_ex":     1.5,   # Three Soldiers/Crows, Morning/Evening Star, Harami
+    # Structure & Divergence (bobot tinggi — sinyal konfirmasi kuat)
+    "rsi_div":        4.0,   # RSI Divergence — reversal terkuat
+    "momentum_chain": 2.0,   # Market Structure (HH+HL / LL+LH)
+    # Trend & Level indicators
+    "sma":            1.5,   # SMA Golden/Death Cross
+    "fibonacci":      2.0,   # Fibonacci Retracement levels
 }
 
 # ML
@@ -101,6 +117,7 @@ TP1_CLOSE_PCT    = 50.0
 BACKTEST_PERIOD  = "1y"
 INITIAL_CAPITAL  = 10000
 REFRESH_INTERVAL = 60
+MAX_STACK        = 5      # maks posisi tumpuk searah (general mode)
 SHOW_CHART       = True
 
 
@@ -112,7 +129,7 @@ SHOW_CHART       = True
 MICRO_LOT        = 0.01
 MICRO_MAX_ORDERS = 1
 MICRO_MIN_SCORE  = 7
-MICRO_ML_CONF    = 75
+MICRO_ML_CONF    = 70
 MICRO_ADX_MIN    = 30
 MICRO_RISK_PCT   = 0.5
 
@@ -122,13 +139,20 @@ MICRO_RISK_PCT   = 0.5
 #  Untuk akun real ~$60 USD, target profit $15-20 per trade
 # ==============================================================
 
-REAL_LOT        = 0.3   # lot per order  (ubah di sini jika mau lebih besar)
-REAL_MAX_ORDERS = 1      # maksimal 1 posisi aktif, tidak tumpuk
-REAL_ML_CONF    = 70     # ML wajib setuju minimal 70%
+REAL_LOT        = 0.01   # fallback jika auto-lot tidak bisa baca saldo
+REAL_MAX_ORDERS = 1      # jumlah order sekaligus per sinyal
+REAL_MAX_STACK  = 3      # maks posisi tumpuk searah (sinyal bagus → pasang lagi)
+REAL_ML_CONF    = 70     # ML wajib setuju minimal 70% → akurasi 91.2%, coverage 55.6%
 REAL_ADX_MIN    = 28     # hanya masuk saat trending
 REAL_TRAIL_PIPS = 15.0   # trailing stop 15 pips
-REAL_RISK_PCT   = 8.0    # maks 8% balance per trade
+REAL_RISK_PCT   = 10.0   # risk 10% balance per trade → lot proporsional ke SL
 
+# Auto lot — bot baca saldo dan hitung lot otomatis
+# Formula: lot = balance / 10000  (setiap $100 = 0.01 lot)
+# Contoh: $59 → 0.01 | $200 → 0.02 | $500 → 0.05 | $1000 → 0.10 | $5000 → 0.50
+REAL_AUTO_LOT     = True   # True = hitung otomatis, False = pakai REAL_LOT
+REAL_AUTO_LOT_MAX = 0.10   # batas maksimal lot
+REAL_AUTO_LOT_MIN = 0.01   # batas minimal lot
 
 # RR 1:10 — SL kecil, TP sangat jauh
 # 1 trade menang = tutup 10 trade rugi

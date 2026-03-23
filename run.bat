@@ -1,62 +1,62 @@
 @echo off
 chcp 65001 >nul
+cls
 echo.
-echo  ============================================
-echo   TRADING ROBOT - EUR/USD and GOLD/USD
-echo  ============================================
+echo  ╔══════════════════════════════════════════════════════╗
+echo  ║        TRADING ROBOT  -  EUR/USD  ^&  GOLD/USD        ║
+echo  ║        Powered by Yahoo Finance + ML + MT5           ║
+echo  ╚══════════════════════════════════════════════════════╝
 echo.
-echo  -- AKURASI ML TINGGI (rekomendasi) ---------
-echo  1. EURUSD 1d  [~94%% ML accuracy]
-echo  2. GOLD   1d  [~60%% ML accuracy]
+echo  ─── API SERVER (rekomendasi) ────────────────────────────
+echo  1. Jalankan API + Bot XAUUSD  [REAL MODE, MT5 auto-order]
+echo  2. Jalankan API + Bot XAUUSD  [DEBUG mode, reload otomatis]
 echo.
-echo  -- ANALISIS INTRADAY -----------------------
-echo  3. EURUSD 1h  [~51%% ML, rule-based lebih dominan]
-echo  4. GOLD   1h  [~50%% ML, rule-based lebih dominan]
-echo  5. EURUSD 15m
-echo  6. GOLD   15m
+echo  ─── CLI LIVE MODE ───────────────────────────────────────
+echo  3. XAUUSD 1h  --live --mt5 --real
+echo  4. XAUUSD 5m  --live --mt5 --real
+echo  5. XAUUSD 1h  --live --mt5 --micro
+echo  6. EURUSD 1h  --live --mt5 --real
 echo.
-echo  -- BACKTEST --------------------------------
-echo  7. Backtest EURUSD (1h)
-echo  8. Backtest GOLD   (1h)
+echo  ─── ANALISIS SEKALI ─────────────────────────────────────
+echo  7. XAUUSD 1h  (analisis + MT5 status)
+echo  8. XAUUSD 5m
+echo  9. EURUSD 1h
 echo.
-echo  -- DENGAN LSTM (TensorFlow Deep Learning) --
-echo  A. EURUSD 1d + LSTM
-echo  B. GOLD   1d + LSTM
+echo  ─── BACKTEST ────────────────────────────────────────────
+echo  B1. Backtest XAUUSD 1h
+echo  B2. Backtest EURUSD 1h
 echo.
-echo  -- META TRADER --------------------------------
-echo  M1. Connect MT5 + Analisis EURUSD 1d
-echo  M2. Connect MT5 + Live Mode EURUSD 1h
-echo  M3. Generate EA file untuk MT4
-echo  M4. MT4 Bridge + Live EURUSD 1h
-echo  M5. Cek Status Akun MT5
-echo.
-echo  -- TOOLS -----------------------------------
-echo  9. Live Mode EURUSD 1h (auto refresh 60s)
-echo  0. Panduan Tuning Parameter
-echo  C. Custom command
+echo  ─── TOOLS ───────────────────────────────────────────────
+echo  D1. Backfill data XAUUSD ke PostgreSQL
+echo  D2. Cek status akun MT5
+echo  D3. Panduan tuning parameter
+echo   C. Custom command
 echo.
 set /p CHOICE="Pilihan: "
 
-if "%CHOICE%"=="1" python -X utf8 main.py --symbol EURUSD --tf 1d
-if "%CHOICE%"=="2" python -X utf8 main.py --symbol GOLD   --tf 1d
-if "%CHOICE%"=="3" python -X utf8 main.py --symbol EURUSD --tf 1h
-if "%CHOICE%"=="4" python -X utf8 main.py --symbol GOLD   --tf 1h
-if "%CHOICE%"=="5" python -X utf8 main.py --symbol EURUSD --tf 15m
-if "%CHOICE%"=="6" python -X utf8 main.py --symbol GOLD   --tf 15m
-if "%CHOICE%"=="7" python -X utf8 main.py --symbol EURUSD --tf 1h --backtest
-if "%CHOICE%"=="8" python -X utf8 main.py --symbol GOLD   --tf 1h --backtest
-if /i "%CHOICE%"=="A" python -X utf8 main.py --symbol EURUSD --tf 1d --lstm
-if /i "%CHOICE%"=="B" python -X utf8 main.py --symbol GOLD   --tf 1d --lstm
-if /i "%CHOICE%"=="M1" python -X utf8 main.py --symbol EURUSD --tf 1d --mt5
-if /i "%CHOICE%"=="M2" python -X utf8 main.py --symbol EURUSD --tf 1h --mt5 --live
-if /i "%CHOICE%"=="M3" python -X utf8 main.py --mt-setup
-if /i "%CHOICE%"=="M4" python -X utf8 main.py --symbol EURUSD --tf 1h --mt4 --live
-if /i "%CHOICE%"=="M5" python -X utf8 main.py --symbol EURUSD --tf 1h --mt5 --mt-status
-if "%CHOICE%"=="9" python -X utf8 main.py --symbol EURUSD --tf 1h --live
-if "%CHOICE%"=="0" python -X utf8 main.py --tune
+if "%CHOICE%"=="1"  uvicorn api_main:app --host 0.0.0.0 --port 8000 --workers 1
+if "%CHOICE%"=="2"  uvicorn api_main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+
+if "%CHOICE%"=="3"  python -X utf8 main.py --symbol XAUUSD --tf 1h  --live --mt5 --real
+if "%CHOICE%"=="4"  python -X utf8 main.py --symbol XAUUSD --tf 5m  --live --mt5 --real
+if "%CHOICE%"=="5"  python -X utf8 main.py --symbol XAUUSD --tf 1h  --live --mt5 --micro
+if "%CHOICE%"=="6"  python -X utf8 main.py --symbol EURUSD --tf 1h  --live --mt5 --real
+
+if "%CHOICE%"=="7"  python -X utf8 main.py --symbol XAUUSD --tf 1h  --mt5 --mt-status
+if "%CHOICE%"=="8"  python -X utf8 main.py --symbol XAUUSD --tf 5m
+if "%CHOICE%"=="9"  python -X utf8 main.py --symbol EURUSD --tf 1h
+
+if /i "%CHOICE%"=="B1" python -X utf8 main.py --symbol XAUUSD --tf 1h --backtest
+if /i "%CHOICE%"=="B2" python -X utf8 main.py --symbol EURUSD --tf 1h --backtest
+
+if /i "%CHOICE%"=="D1" python -X utf8 scripts/backfill.py --symbol XAUUSD
+if /i "%CHOICE%"=="D2" python -X utf8 main.py --symbol XAUUSD --tf 1h --mt5 --mt-status
+if /i "%CHOICE%"=="D3" python -X utf8 main.py --tune
+
 if /i "%CHOICE%"=="C" (
-    set /p ARGS="Masukkan argumen (contoh: --symbol EURUSD --tf 15m --backtest): "
+    set /p ARGS="Masukkan argumen (contoh: --symbol XAUUSD --tf 1h --backtest): "
     python -X utf8 main.py %ARGS%
 )
 
+echo.
 pause

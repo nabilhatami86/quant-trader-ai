@@ -1,0 +1,88 @@
+{
+  "date": "2026-03-22",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "Better Asset to Buy Now With $500 and Hold for 3 Years: Bitcoin vs. Gold",
+      "source": "Motley Fool",
+      "published": "2026-03-22T04:50:00Z",
+      "impact": "LOW",
+      "url": "https://www.fool.com/investing/2026/03/22/better-asset-to-buy-now-with-500-and-hold-for-3-ye/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "World Gold Council Releases Framework for Tokenized Gold",
+      "source": "Coinspeaker",
+      "published": "2026-03-21T11:18:47Z",
+      "impact": "LOW",
+      "url": "https://www.coinspeaker.com/world-gold-council-releases-tokenized-gold-framework/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Update: Gold Drops to a Two-Month Low as the Dollar and Yields Rise",
+      "source": "MT Newswires",
+      "published": "2026-03-20T18:00:11Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-drops-two-month-low-180011367.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Gold Is Back Under $5,000, And This ETF May Be The Best Bet On A Rebound Run Higher",
+      "source": "24/7 Wall St.",
+      "published": "2026-03-20T17:55:28Z",
+      "impact": "LOW",
+      "url": "https://247wallst.com/investing/2026/03/20/gold-back-under-5000-is-this-the-best-etf-to-buy-for-its-next-run-higher/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Gold Heads for Biggest Weekly Loss in Six Years as Prices Drop Over 7%",
+      "source": "GuruFocus.com",
+      "published": "2026-03-20T17:08:52Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-heads-biggest-weekly-loss-170852461.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Gold Rises Off a Two-Month Low Even as the Dollar and Yields Rise",
+      "source": "MT Newswires",
+      "published": "2026-03-20T13:33:42Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-rises-off-two-month-133342173.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Better Investment to Buy Now With $2,500 and Hold for 10 Years: XRP vs. Gold or Silver",
+      "source": "Motley Fool",
+      "published": "2026-03-20T11:40:00Z",
+      "impact": "LOW",
+      "url": "https://www.fool.com/investing/2026/03/20/better-investment-to-buy-now-with-2500-and-hold-fo/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Update: Gold Prices Plunge as Hopes for Lower U.S. Interest Rates Fade",
+      "source": "MT Newswires",
+      "published": "2026-03-19T18:00:07Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-prices-plunge-hopes-lower-180007611.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    },
+    {
+      "title": "Gold Drops 1.2% to $4,760 as Oil Surge Clouds Fed Rate Path",
+      "source": "GuruFocus.com",
+      "published": "2026-03-19T16:14:23Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-drops-1-2-4-161423358.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-22"
+    }
+  ],
+  "calendar": []
+}
