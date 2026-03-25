@@ -1,3 +1,29 @@
+"""
+analysis/indicators.py — Kalkulasi semua indikator teknikal.
+
+Fungsi utama:
+  add_all_indicators(df) → DataFrame + 99 kolom indikator
+
+Indikator yang dihitung:
+  Traditional   : RSI, MACD, Bollinger Bands, Stochastic, EMA (9/20/50/200),
+                  SMA (20/50/200), ATR, ADX (+DI/-DI)
+  Volume        : OBV, VWAP, MFI (Money Flow Index)
+  Momentum      : Williams %R, CCI, Parabolic SAR
+  Trend         : Supertrend (ATR-based), Ichimoku (Tenkan/Kijun/Senkou/Chikou)
+  Structure     : RSI Divergence (bull/bear), Momentum Chain (HH/HL, LL/LH)
+  SMC           : Fair Value Gap (FVG), Order Block (OB), BOS/ChoCH,
+                  Liquidity Sweep, VWAP bands
+  Candlestick   : Pattern dasar (hammer, engulfing, doji, dll)
+                  Pattern lanjut (Three Soldiers/Crows, Morning/Evening Star, Harami)
+  Fibonacci     : Retracement levels dari swing high/low 50 candle
+  Regime        : Deteksi market regime (trending_up/down, ranging, volatile)
+
+Catatan performa:
+  - Semua indikator dioptimasi untuk M5 (5 menit) XAUUSD
+  - NaN pada baris awal adalah normal (warmup period indikator)
+  - Kolom output: lowercase snake_case (misal: ema_20, bb_upper, adx)
+"""
+
 import pandas as pd
 import numpy as np
 from config import *
@@ -565,6 +591,200 @@ def detect_volume_divergence(close: pd.Series, volume: pd.Series,
 
 
 # ─────────────────────────────────────────────
+# NEW: SUPERTREND
+# ─────────────────────────────────────────────
+
+def calculate_supertrend(high: pd.Series, low: pd.Series, close: pd.Series,
+                          period: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
+    """
+    Supertrend — ATR-based trend indicator.
+    Garis di bawah harga = BUY (supertrend_dir=1)
+    Garis di atas harga  = SELL (supertrend_dir=-1)
+    Flip = konfirmasi perubahan trend.
+    """
+    atr       = calculate_atr(high, low, close, period)
+    hl2       = (high + low) / 2.0
+    upperband = (hl2 + multiplier * atr).values.astype(float)
+    lowerband = (hl2 - multiplier * atr).values.astype(float)
+    close_arr = close.values.astype(float)
+    n         = len(close_arr)
+
+    st_line   = np.full(n, np.nan)
+    st_dir    = np.ones(n, dtype=int)   # 1=BUY, -1=SELL
+
+    # Initialise first bar
+    st_line[0] = upperband[0]
+    st_dir[0]  = -1
+
+    for i in range(1, n):
+        # Adjust upper band
+        if upperband[i] < upperband[i - 1] or close_arr[i - 1] > upperband[i - 1]:
+            upperband[i] = upperband[i]
+        else:
+            upperband[i] = upperband[i - 1]
+
+        # Adjust lower band
+        if lowerband[i] > lowerband[i - 1] or close_arr[i - 1] < lowerband[i - 1]:
+            lowerband[i] = lowerband[i]
+        else:
+            lowerband[i] = lowerband[i - 1]
+
+        # Direction
+        if st_dir[i - 1] == 1:   # currently BUY
+            if close_arr[i] < lowerband[i]:
+                st_dir[i]  = -1
+                st_line[i] = upperband[i]
+            else:
+                st_dir[i]  = 1
+                st_line[i] = lowerband[i]
+        else:                     # currently SELL
+            if close_arr[i] > upperband[i]:
+                st_dir[i]  = 1
+                st_line[i] = lowerband[i]
+            else:
+                st_dir[i]  = -1
+                st_line[i] = upperband[i]
+
+    st_flip = np.zeros(n, dtype=int)
+    for i in range(1, n):
+        if st_dir[i] != st_dir[i - 1]:
+            st_flip[i] = st_dir[i]   # +1 = just flipped BUY, -1 = just flipped SELL
+
+    return pd.DataFrame({
+        "supertrend":      st_line,
+        "supertrend_dir":  st_dir,
+        "supertrend_flip": st_flip,
+    }, index=close.index)
+
+
+# ─────────────────────────────────────────────
+# NEW: MONEY FLOW INDEX (MFI)
+# ─────────────────────────────────────────────
+
+def calculate_mfi(high: pd.Series, low: pd.Series, close: pd.Series,
+                  volume: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Money Flow Index — RSI tertimbang volume.
+    > 80  : overbought (SELL)
+    < 20  : oversold   (BUY)
+    Lebih akurat dari RSI karena mempertimbangkan volume.
+    """
+    tp      = (high + low + close) / 3.0
+    mf      = tp * volume
+    up      = tp > tp.shift(1)
+    pos_mf  = mf.where(up,  0.0)
+    neg_mf  = mf.where(~up, 0.0)
+    pmf_sum = pos_mf.rolling(period).sum()
+    nmf_sum = neg_mf.rolling(period).sum()
+    mfr     = pmf_sum / nmf_sum.replace(0, np.nan)
+    mfi     = 100 - (100 / (1 + mfr))
+    return mfi.fillna(50)
+
+
+# ─────────────────────────────────────────────
+# NEW: PARABOLIC SAR (PSAR)
+# ─────────────────────────────────────────────
+
+def calculate_psar(high: pd.Series, low: pd.Series, close: pd.Series,
+                   af_start: float = 0.02, af_step: float = 0.02,
+                   af_max: float = 0.20) -> pd.DataFrame:
+    """
+    Parabolic SAR — dot di bawah harga = BUY (psar_dir=1), di atas = SELL (psar_dir=-1).
+    Sangat baik untuk konfirmasi arah trend dan titik stop loss trailing.
+    """
+    high_arr  = high.values.astype(float)
+    low_arr   = low.values.astype(float)
+    n         = len(high_arr)
+    psar_arr  = np.zeros(n)
+    dir_arr   = np.ones(n, dtype=int)
+
+    if n < 2:
+        return pd.DataFrame({"psar": psar_arr, "psar_dir": dir_arr}, index=close.index)
+
+    bull = True
+    af   = af_start
+    ep   = high_arr[0]
+    psar_arr[0] = low_arr[0]
+    dir_arr[0]  = 1
+
+    for i in range(1, n):
+        if bull:
+            psar_val = psar_arr[i - 1] + af * (ep - psar_arr[i - 1])
+            psar_val = min(psar_val, low_arr[i - 1], low_arr[max(i - 2, 0)])
+            if low_arr[i] < psar_val:
+                bull        = False
+                psar_arr[i] = ep
+                ep          = low_arr[i]
+                af          = af_start
+                dir_arr[i]  = -1
+            else:
+                dir_arr[i]  = 1
+                psar_arr[i] = psar_val
+                if high_arr[i] > ep:
+                    ep = high_arr[i]
+                    af = min(af + af_step, af_max)
+        else:
+            psar_val = psar_arr[i - 1] + af * (ep - psar_arr[i - 1])
+            psar_val = max(psar_val, high_arr[i - 1], high_arr[max(i - 2, 0)])
+            if high_arr[i] > psar_val:
+                bull        = True
+                psar_arr[i] = ep
+                ep          = high_arr[i]
+                af          = af_start
+                dir_arr[i]  = 1
+            else:
+                dir_arr[i]  = -1
+                psar_arr[i] = psar_val
+                if low_arr[i] < ep:
+                    ep = low_arr[i]
+                    af = min(af + af_step, af_max)
+
+    return pd.DataFrame({"psar": psar_arr, "psar_dir": dir_arr}, index=close.index)
+
+
+# ─────────────────────────────────────────────
+# NEW: ICHIMOKU CLOUD
+# ─────────────────────────────────────────────
+
+def calculate_ichimoku(high: pd.Series, low: pd.Series,
+                        close: pd.Series) -> pd.DataFrame:
+    """
+    Ichimoku Kinko Hyo:
+    - Tenkan-sen (9)  : garis cepat — momentum jangka pendek
+    - Kijun-sen (26)  : garis lambat — trend medium term
+    - Senkou Span A/B : batas atas/bawah cloud
+    - Cloud bullish (A>B): zona support
+    - Cloud bearish (B>A): zona resistance
+
+    Sinyal kuat:
+    BUY : harga di atas cloud + Tenkan > Kijun
+    SELL: harga di bawah cloud + Tenkan < Kijun
+    """
+    tenkan  = (high.rolling(9).max()  + low.rolling(9).min())  / 2
+    kijun   = (high.rolling(26).max() + low.rolling(26).min()) / 2
+    span_a  = ((tenkan + kijun) / 2).shift(26)
+    span_b  = ((high.rolling(52).max() + low.rolling(52).min()) / 2).shift(26)
+
+    cloud_top  = pd.concat([span_a, span_b], axis=1).max(axis=1)
+    cloud_bot  = pd.concat([span_a, span_b], axis=1).min(axis=1)
+    cloud_bull = (span_a > span_b).astype(int).fillna(0)  # 1=green cloud, 0=red cloud
+
+    # TK cross: Tenkan cross above Kijun = BUY, below = SELL
+    tk_cross_bull = ((tenkan > kijun) & (tenkan.shift(1) <= kijun.shift(1))).astype(int)
+    tk_cross_bear = ((tenkan < kijun) & (tenkan.shift(1) >= kijun.shift(1))).astype(int)
+
+    return pd.DataFrame({
+        "ichi_tenkan":     tenkan,
+        "ichi_kijun":      kijun,
+        "ichi_cloud_top":  cloud_top,
+        "ichi_cloud_bot":  cloud_bot,
+        "ichi_cloud_bull": cloud_bull,
+        "ichi_tk_bull":    tk_cross_bull.fillna(0).astype(int),
+        "ichi_tk_bear":    tk_cross_bear.fillna(0).astype(int),
+    })
+
+
+# ─────────────────────────────────────────────
 # MASTER FUNCTION
 # ─────────────────────────────────────────────
 
@@ -648,6 +868,15 @@ def add_all_indicators(df: pd.DataFrame, max_rows: int = 1000) -> pd.DataFrame:
     mom_df             = detect_momentum_chain(high, low, close)
     df                 = pd.concat([df, mom_df], axis=1)
 
+    # ── New Trend Indicators ───────────────────────────────
+    st_df              = calculate_supertrend(high, low, close)
+    df                 = pd.concat([df, st_df], axis=1)
+    df["mfi"]          = calculate_mfi(high, low, close, volume)
+    psar_df            = calculate_psar(high, low, close)
+    df                 = pd.concat([df, psar_df], axis=1)
+    ichi_df            = calculate_ichimoku(high, low, close)
+    df                 = pd.concat([df, ichi_df], axis=1)
+
     # ── Momentum & Price Context ──────────────────────────
     df["price_change"]  = close.pct_change()
     df["volatility"]    = close.rolling(20).std() / close.rolling(20).mean()
@@ -703,6 +932,21 @@ def add_all_indicators(df: pd.DataFrame, max_rows: int = 1000) -> pd.DataFrame:
     for col in smc_float_cols:
         if col in df.columns:
             df[col] = df[col].fillna(0)
+
+    # New trend indicators — fill with neutral defaults
+    for col in ["supertrend_dir", "psar_dir", "supertrend_flip",
+                "ichi_tk_bull", "ichi_tk_bear", "ichi_cloud_bull"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(0).astype(int)
+    for col in ["mfi"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(50)
+    for col in ["supertrend", "psar"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(close)
+    for col in ["ichi_tenkan", "ichi_kijun", "ichi_cloud_top", "ichi_cloud_bot"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(close)
 
     # Volume kolom → fill 0 / 1
     if "vol_ratio" in df.columns:

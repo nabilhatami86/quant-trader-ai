@@ -179,6 +179,10 @@ class CandleLog(Base):
 
     logged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Outcome — diisi setelah lookahead candle berlalu
+    outcome:     Mapped[str | None]   = mapped_column(String(5),  nullable=True)  # WIN/LOSS/FLAT
+    outcome_pct: Mapped[float | None] = mapped_column(Float,      nullable=True)  # % perubahan harga
+
     __table_args__ = (
         UniqueConstraint("symbol", "timeframe", "timestamp", name="uq_candle_log"),
         Index("ix_candle_log_symbol_tf_ts", "symbol", "timeframe", "timestamp"),

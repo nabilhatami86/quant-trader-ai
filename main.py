@@ -1,3 +1,42 @@
+"""
+main.py — Entry point trading bot. Parse CLI args, init koneksi, jalankan loop utama.
+
+Cara pakai:
+  python main.py                          # analisis sekali, tanpa MT5
+  python main.py --live                   # loop setiap candle close
+  python main.py --mt5 --live             # live trading via MetaTrader 5
+  python main.py --mt5 --real --live      # mode real money (~$60 akun)
+  python main.py --mt5 --micro --live     # mode mikro (demo / modal kecil)
+  python main.py --backtest               # backtest dengan data historis
+  python main.py --mt5 --mt-status        # tampilkan status akun MT5
+
+Flags penting:
+  --symbol   : simbol trading (default: XAUUSD)
+  --tf       : timeframe candle (default: 5m)
+  --micro    : mode akun mikro — lot 0.01, filter ketat, ML wajib setuju
+  --real     : mode akun real  — lot auto (balance/10000), RR 1:10, trailing stop
+  --lot      : override lot size manual
+  --risk     : max loss per trade dalam USD (0 = pakai ATR)
+  --trail    : trailing stop dalam pips
+  --dca      : DCA mode — pasang ulang setiap N menit jika sinyal masih sama
+  --force-trade BUY/SELL : bypass semua filter, paksa pasang order
+
+Loop utama (--live):
+  Setiap siklus:
+    1. Cek market closed (weekend/holiday) → deep analysis + sleep 5 menit
+    2. Cek session close (Tokyo/London/Daily) → run_close_analysis()
+    3. Tunggu sampai candle close (_seconds_to_candle_close)
+    4. run_analysis() → load data → train ML → generate signal → execute
+    5. sync_closed_positions() → update journal P&L
+    6. save_cycle() → simpan ke DB
+    7. Adaptive learning → record outcome → adjust threshold → retrain ML
+    8. Print stats & cooldown REFRESH_INTERVAL detik
+
+Anti-overtrading:
+  Semua guard ada di SignalExecutor.should_trade():
+  cooldown 15 menit, SL cooldown 30 menit, max 2/jam, max 8/hari, max 1 posisi terbuka.
+"""
+
 import argparse
 import time
 import sys
@@ -84,6 +123,24 @@ def show_tuning_guide():
 """)
 
 
+def _seconds_to_candle_close(timeframe: str) -> int:
+    """
+    Hitung sisa detik sampai candle sekarang CLOSE berdasarkan waktu UTC.
+    Contoh: timeframe 5m, jam 14:03:20 UTC → sisa = (5*60) - (3*60+20) = 100 detik
+    """
+    from datetime import datetime, timezone
+
+    TF_SECONDS = {
+        "1m":  60,    "5m":  300,  "15m": 900,
+        "30m": 1800,  "1h":  3600, "4h":  14400, "1d": 86400,
+    }
+    tf_secs  = TF_SECONDS.get(timeframe, 300)
+    now_ts   = int(datetime.now(tz=timezone.utc).timestamp())
+    elapsed  = now_ts % tf_secs       # detik sudah berjalan dalam candle ini
+    remaining = tf_secs - elapsed     # sisa sampai candle close
+    return max(remaining, 1)
+
+
 def _print_current_candle(df_ind, signal: dict = None) -> None:
     from config import EMA_SLOW, EMA_TREND
     GREEN  = "\033[92m"
@@ -157,13 +214,28 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
 
     # Candle memory — cari pola serupa dari histori sebelum generate sinyal
-    from data.candle_log import find_similar_candles, print_similar_report, log_candle, print_recent, print_signal_candles
+    from data.candle_log import (find_similar_candles, print_similar_report,
+                                  log_candle, print_recent, print_signal_candles,
+                                  update_signal_outcomes, get_signal_accuracy)
     candle_memory = None
+    sig_accuracy  = {}
     if bot.df_ind is not None and not bot.df_ind.empty:
+        # Update outcome untuk signal lama yang belum dievaluasi
+        update_signal_outcomes(bot.symbol, bot.timeframe, bot.df_ind, lookahead=3)
+
         candle_memory = find_similar_candles(bot.symbol, bot.timeframe, bot.df_ind.iloc[-1])
         print_similar_report(candle_memory)
 
     result = bot.analyze(candle_memory=candle_memory)
+
+    # Hitung akurasi signal historis setelah tahu exec_direction
+    exec_dir = result.get("exec_direction", "WAIT")
+    if exec_dir in ("BUY", "SELL") and bot.df_ind is not None and not bot.df_ind.empty:
+        sig_accuracy = get_signal_accuracy(
+            bot.symbol, bot.timeframe, bot.df_ind.iloc[-1], exec_dir, top_k=20
+        )
+        result["sig_accuracy"] = sig_accuracy
+
     bot.print_analysis(result)
 
     from analysis.signals import print_filter_log
@@ -171,7 +243,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
     if sig:
         print_filter_log(sig.get("filters", {}), sig.get("direction", "WAIT"))
 
-    log_candle(bot.symbol, bot.timeframe, bot.df_ind, result.get("signal"))
+    log_candle(bot.symbol, bot.timeframe, bot.df_ind,
+               result.get("signal"), result.get("realtime_data"))
 
     # Tampilkan hanya candle yang sedang berjalan
     if bot.df_ind is not None and not bot.df_ind.empty:
@@ -442,6 +515,7 @@ def main():
                                          strict_mode=args.micro,
                                          risk_per_trade=args.risk,
                                          real_mode=args.real)
+                executor._timeframe = timeframe   # untuk log_entry/journal
                 if args.mt_status:
                     mt5_conn.print_status()
                     return
@@ -470,19 +544,63 @@ def main():
     if bot.news_filter and bot.news_sentiment:
         bot.news_filter.print_news_report(bot.news_sentiment)
 
-    # Catat BOT_START ke DB
-    from services.db_logger import save_bot_start, save_bot_stop
+    # Catat BOT_START ke DB + pastikan kolom outcome ada
+    from services.db_logger import save_bot_start, save_bot_stop, ensure_outcome_columns
     mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS")
+    ensure_outcome_columns()
     save_bot_start(symbol, timeframe, mode=mt_mode)
 
     if args.live:
-        print(f"[~] Live mode aktif [{mt_mode}]. Refresh setiap {REFRESH_INTERVAL}s (Ctrl+C untuk stop)\n")
+        print(f"[~] Live mode aktif [{mt_mode}] — realtime baca candle MT5 tiap {REFRESH_INTERVAL}s (Ctrl+C untuk stop)\n")
         print(f"[DB] Hasil analisis otomatis tersimpan ke PostgreSQL setiap siklus")
-        cycle       = 0
-        news_date   = date.today()
+        cycle            = 0
+        news_date        = date.today()
+        _deep_done_today = ""   # tanggal terakhir deep analysis dijalankan
+
         try:
             while True:
+                from datetime import datetime, timezone, timedelta
+                now_dt  = datetime.now(tz=timezone(timedelta(hours=7)))
+                now_wib = now_dt.strftime("%H:%M:%S")
+
+                # ══════════════════════════════════════════════════════════════
+                # MARKET CLOSED — Deep Analysis Mode
+                # ══════════════════════════════════════════════════════════════
+                try:
+                    from data.session_bias import is_market_closed, run_market_close_deep_analysis
+                    _closed = is_market_closed(mt5_conn)
+                except Exception:
+                    _closed = False
+
+                if _closed:
+                    today_str = now_dt.strftime("%Y-%m-%d")
+                    if _deep_done_today != today_str:
+                        print(f"\n{'='*60}")
+                        print(f"  ⏸  MARKET TUTUP  |  {now_wib} WIB")
+                        print(f"{'='*60}")
+                        # Jalankan deep analysis SEKALI per hari tutup
+                        try:
+                            run_market_close_deep_analysis(
+                                symbol   = symbol,
+                                bot      = bot,
+                                mt5_conn = mt5_conn,
+                            )
+                            _deep_done_today = today_str
+                        except Exception as _de:
+                            print(f"  [!] Deep analysis error: {_de}")
+                    else:
+                        print(f"\n  ⏸  Market tutup | {now_wib} WIB "
+                              f"— deep analysis sudah selesai, menunggu open...")
+
+                    print(f"  [~] Cek lagi dalam 5 menit...")
+                    time.sleep(300)
+                    continue
+
+                # ══════════════════════════════════════════════════════════════
+                # MARKET OPEN — Normal Analysis Cycle
+                # ══════════════════════════════════════════════════════════════
                 cycle += 1
+                _deep_done_today = ""   # reset agar deep analysis bisa jalan lagi besok
 
                 if date.today() != news_date:
                     print("\n[~] Hari baru — refresh bias berita...")
@@ -491,18 +609,133 @@ def main():
                         bot.news_filter.print_news_report(bot.news_sentiment)
                     news_date = date.today()
 
+                secs_left     = _seconds_to_candle_close(timeframe)
+                candle_status = f"▶ LIVE (close dalam {secs_left}s)" if secs_left > 5 else "▶ CANDLE CLOSE"
+
+                # ── Session Close Analysis (saat session mau tutup) ──────────
+                try:
+                    from data.session_bias import (
+                        is_near_session_close, was_analyzed_recently,
+                        run_close_analysis, print_current_bias,
+                    )
+                    _near_close, _sess_label, _next_sess = is_near_session_close(window_min=15)
+                    if _near_close and not was_analyzed_recently(_sess_label, hours=6):
+                        print(f"\n  [!] {_sess_label} session mendekati tutup "
+                              f"— menjalankan analisis bias sesi...")
+                        run_close_analysis(
+                            symbol        = symbol,
+                            mt5_connector = mt5_conn,
+                            session_label = _sess_label,
+                            next_session  = _next_sess,
+                        )
+                except Exception:
+                    pass
+
                 print(f"\n{'-'*60}")
-                from datetime import datetime, timezone, timedelta
-                print(f"  Cycle #{cycle}  |  {datetime.now(tz=timezone(timedelta(hours=7))).strftime('%H:%M:%S')} WIB")
+                print(f"  Cycle #{cycle}  |  {now_wib} WIB  |  {candle_status}")
                 print(f"{'-'*60}")
+
+                # Tampilkan pre-session plan jika ada
+                try:
+                    from data.session_bias import get_session_plan, print_current_bias
+                    plan = get_session_plan()
+                    if plan:
+                        bias_dir = plan.get("htf_bias", "NEUTRAL")
+                        print(f"  [Pre-Session Plan] HTF Bias: "
+                              f"{'BUY' if bias_dir=='BUY' else ('SELL' if bias_dir=='SELL' else 'NEUTRAL')}  "
+                              f"(score: {plan.get('htf_score', 0):+.1f})  "
+                              f"| Min Score: {plan.get('min_score', 5.0)}")
+                    print_current_bias()
+                except Exception:
+                    pass
+
                 run_analysis(bot, executor=executor, mt4=mt4_bridge,
                              force_trade=args.force_trade)
                 if mt5_conn:
                     mt5_conn.print_status()
+
+                # ── Sync closed positions + Adaptive Learning ─────────────────
+                if executor and hasattr(executor, "sync_closed_positions"):
+                    closed_now = executor.sync_closed_positions()
+                    if closed_now:
+                        try:
+                            from ml.adaptive import get_learner
+                            from data.trade_journal import JOURNAL_PATH
+                            import pandas as _jdf
+                            import config as _cfg
+
+                            learner = get_learner()
+
+                            # Ambil data trade dari journal untuk pasangkan ke adaptive
+                            _j = None
+                            if os.path.exists(JOURNAL_PATH):
+                                _j = _jdf.read_csv(JOURNAL_PATH, dtype=str)
+
+                            for _ct in closed_now:
+                                _ticket  = _ct.get("ticket")
+                                _result  = _ct.get("result", "MANUAL")
+                                _pnl     = float(_ct.get("pnl", 0))
+                                _dir     = "SELL"
+                                _source  = "unknown"
+                                _score   = 0.0
+
+                                # Cari di journal untuk direction & source
+                                if _j is not None and _ticket:
+                                    _row = _j[_j["ticket"] == str(_ticket)]
+                                    if not _row.empty:
+                                        _dir    = str(_row.iloc[0].get("direction", "SELL"))
+                                        _source = str(_row.iloc[0].get("source", "unknown"))
+
+                                learner.record_trade_outcome(
+                                    ticket       = _ticket,
+                                    result       = _result,
+                                    pnl          = _pnl,
+                                    direction    = _dir,
+                                    source       = _source,
+                                    signal_score = _score,
+                                )
+
+                            # Terapkan threshold baru dari adaptive
+                            new_thr = learner.min_score
+                            if new_thr != _cfg.MIN_SIGNAL_SCORE:
+                                print(f"  [Adaptive] MIN_SIGNAL_SCORE: "
+                                      f"{_cfg.MIN_SIGNAL_SCORE} → {new_thr}")
+                                _cfg.MIN_SIGNAL_SCORE = new_thr
+
+                            # Trigger ML retrain jika cukup data baru
+                            if learner.should_retrain_ml():
+                                print(f"\n  [Adaptive] {learner.state['trades_since_retrain']} trade baru — "
+                                      f"retrain ML...")
+                                try:
+                                    if bot.load_data():
+                                        from joblib import parallel_backend
+                                        with parallel_backend("threading", n_jobs=1):
+                                            bot.train_model()
+                                        learner.mark_retrained()
+                                        print(f"  [Adaptive] ML berhasil diretrain dengan data terbaru")
+                                except Exception as _re:
+                                    print(f"  [Adaptive] Retrain gagal: {_re}")
+
+                        except Exception as _ae:
+                            pass
+
                 from data.trade_journal import print_stats
                 print_stats(symbol, timeframe)
-                print(f"  [~] Menunggu {REFRESH_INTERVAL}s...")
+
+                # Adaptive report setiap 10 cycle
+                try:
+                    if not hasattr(main, "_cycle_count"):
+                        main._cycle_count = 0
+                    main._cycle_count += 1
+                    if main._cycle_count % 10 == 0:
+                        from ml.adaptive import get_learner
+                        get_learner().print_report()
+                except Exception:
+                    pass
+
+                print(f"  [~] Refresh berikutnya dalam {REFRESH_INTERVAL}s...")
                 time.sleep(REFRESH_INTERVAL)
+
         except KeyboardInterrupt:
             print("\n[OK] Live mode dihentikan.")
             save_bot_stop(symbol, timeframe)

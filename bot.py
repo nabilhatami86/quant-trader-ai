@@ -1,5 +1,31 @@
 """
-Trading Bot - Data Fetcher & Main Logic
+bot.py — Trading Bot: data fetching, indicator pipeline, ML training, analisis sinyal.
+
+Kelas utama:
+  TradingBot   : inti bot — load data, train ML, generate signal, analyze, print output
+
+Alur kerja (per siklus):
+  1. load_data()     → ambil OHLCV dari MT5 / TradingView / Yahoo Finance
+  2. train_model()   → latih CandlePredictor (ensemble ML) + LSTM (opsional)
+  3. analyze()       → jalankan indikator → generate_signal → gabungkan ML vote
+                       → terapkan session bias (GUARD-HTF-Bias)
+                       → tentukan final direction + TP/SL/RR
+  4. print_result()  → tampilkan hasil analisis di terminal dengan warna
+
+Sumber data (prioritas):
+  1. MT5 live (realtime, candle forming)
+  2. TradingView via tvdatafeed (--tv)
+  3. Yahoo Finance (fallback, delay ~1 menit)
+
+Session Bias (GUARD-HTF-Bias):
+  Analisis HTF (H4+Daily) dijalankan saat session close (Tokyo/London/Daily).
+  Jika bias score >= 3.0 dan sinyal M5 berlawanan → WAIT (blok masuk).
+  Bias state disimpan di data/session_bias_state.json.
+
+Dependencies:
+  yfinance, pandas, numpy, MetaTrader5 (opsional),
+  ml.model.CandlePredictor, ml.deep_model.LSTMPredictor,
+  data.news_filter.NewsFilter, data.candle_db
 """
 import yfinance as yf
 import pandas as pd
@@ -62,6 +88,25 @@ def get_market_session() -> str:
 
 
 class TradingBot:
+    """
+    Inti trading bot — mengelola data, ML, dan analisis sinyal.
+
+    Params:
+      symbol        : simbol trading (misal "XAUUSD", "EURUSD")
+      timeframe     : timeframe candle ("1m","5m","15m","1h","4h","1d")
+      use_lstm      : aktifkan LSTM deep model (butuh TensorFlow)
+      use_news      : aktifkan news filter (sentiment + economic calendar)
+      mt5_connector : instance MT5Connector yang sudah connected
+      use_tv        : gunakan TradingView sebagai sumber data
+      tv_user/pass  : kredensial TradingView (opsional, untuk akun premium)
+
+    State penting:
+      self.df       : raw OHLCV terbaru
+      self.df_ind   : OHLCV + semua indikator (99 kolom)
+      self.trained  : True setelah train_model() berhasil
+      self.train_result : dict hasil training ML (accuracy, precision, dll)
+    """
+
     def __init__(self, symbol: str = DEFAULT_SYMBOL, timeframe: str = DEFAULT_TIMEFRAME,
                  use_lstm: bool = False, use_news: bool = True,
                  mt5_connector=None, use_tv: bool = False,
@@ -90,13 +135,17 @@ class TradingBot:
     def load_data(self) -> bool:
         if self.mt5_conn and self.mt5_conn.connected:
             print(f"[~] Fetching {self.symbol} data dari MT5 ({self.timeframe})...")
-            raw = self.mt5_conn.get_ohlcv(self.symbol, self.timeframe, count=1500)
+            # include_forming=True → candle yang sedang terbentuk ikut dibaca (realtime)
+            raw = self.mt5_conn.get_ohlcv(self.symbol, self.timeframe,
+                                          count=1500, include_forming=True)
             if raw.empty:
                 print("[!] MT5 data kosong, fallback ke Yahoo Finance...")
                 raw = fetch_data(self.symbol, self.timeframe)
             else:
-                print(f"[MT5] {len(raw)} candles live dari broker  "
-                      f"(close terakhir: {float(raw['Close'].iloc[-1]):.5f})")
+                last_ts  = raw.index[-1].strftime("%H:%M:%S")
+                is_live  = "(LIVE forming)" if self.mt5_conn.connected else ""
+                print(f"[MT5] {len(raw)} candles  |  candle[-1]: "
+                      f"{float(raw['Close'].iloc[-1]):.5f}  @ {last_ts} {is_live}")
         elif self.use_tv:
             from data.tv_feed import get_tv_ohlcv, TV_AVAILABLE
             if TV_AVAILABLE:
@@ -147,6 +196,7 @@ class TradingBot:
 
         print(f"[OK] {len(self.df_ind)} candles aktif | "
               f"{len(self.df_ind_hist)} candles untuk training ML")
+
         return True
 
     def train_model(self):
@@ -218,6 +268,11 @@ class TradingBot:
         if self.df_ind.empty:
             return {}
 
+        # ── Realtime data dari MT5 (tick + orderbook) ─────────────────
+        rt_data = {}
+        if self.mt5_conn and self.mt5_conn.connected:
+            rt_data = self.mt5_conn.get_realtime_data(self.symbol, tick_seconds=60)
+
         news_bias = self.news_sentiment.get("direction_bias") if self.news_sentiment else None
         news_risk = self.news_sentiment.get("risk_level", "LOW") if self.news_sentiment else "LOW"
         sig = generate_signal(self.df_ind, news_bias=news_bias,
@@ -260,56 +315,179 @@ class TradingBot:
             consensus_dir = "WAIT"
             consensus     = "SPLIT (tie)"
 
-        # Prioritas: rule-based > ML-only (jika confidence tinggi) > WAIT
-        ml_conf  = ml_pred.get("confidence", 0) if ml_pred else 0
-        ml_dir   = ml_pred.get("direction", "WAIT") if ml_pred else "WAIT"
+        # ═══════════════════════════════════════════════════════════════════
+        # DECISION ENGINE — Clean voting system, discipline-first
+        # ═══════════════════════════════════════════════════════════════════
+        # PRIORITY CHAIN:
+        # GUARD  : Position already open → WAIT (no overtrading)
+        # #1 ★★★ : Rule + ML both confirm (ML prob ≥ 65%) → EXECUTE
+        # #2 VETO: ML disagrees at ≥ 70% → CANCEL rule signal
+        # #3 ★★  : Rule signal, ML uncertain/unavailable → EXECUTE
+        # #4 ★   : ML alone (conf_acc ≥ threshold, structure ok) → EXECUTE
+        # #5     : No signal → WAIT
+        # ═══════════════════════════════════════════════════════════════════
+        from analysis.signals import calculate_smart_tp_sl
 
-        if sig["direction"] in ("BUY", "SELL"):
-            # Rule-based sudah ada sinyal — pakai ini (sudah ada TP/SL)
-            exec_direction = sig["direction"]
-            exec_source    = "Rule-Based"
-        elif ml_dir in ("BUY", "SELL") and ml_conf >= 65 and not ml_pred.get("uncertain"):
-            # Rule-based WAIT tapi ML confident ≥ 65% — ikut ML
-            # Rebuild sinyal dengan direction dari ML, TP/SL dari rule-based engine
-            exec_direction = ml_dir
-            exec_source    = f"ML({ml_conf}%)"
-            # Update sig direction & hitung ulang SL/TP
-            from analysis.signals import calculate_smart_tp_sl
-            tp_sl = calculate_smart_tp_sl(
-                exec_direction, close,
-                float(row.get("atr", close * 0.001)),
-                self.df_ind, sig["score"]
-            )
-            sig = dict(sig)
-            sig["direction"] = exec_direction
-            sig["sl"]        = tp_sl["sl"]
-            sig["tp"]        = tp_sl["tp"]
-            sig["tp_dist"]   = tp_sl["tp_dist"]
-            sig["sl_dist"]   = tp_sl["sl_dist"]
-            sig["rr_ratio"]  = tp_sl["rr"]
-            sig["method_tp"] = tp_sl["method_tp"]
-            sig["method_sl"] = tp_sl["method_sl"]
+        ml_conf    = ml_pred.get("confidence", 0)    if ml_pred else 0
+        ml_dir     = ml_pred.get("direction", "WAIT") if ml_pred else "WAIT"
+        ml_prob_b  = ml_pred.get("proba_buy",  0)    if ml_pred else 0   # 0-100
+        ml_prob_s  = ml_pred.get("proba_sell", 0)    if ml_pred else 0
+        ml_certain = (bool(ml_pred) and not ml_pred.get("uncertain")
+                      and ml_dir in ("BUY", "SELL"))
+
+        _ml_cacc    = self.train_result.get("conf_accuracy", 0) if self.trained else 0
+        ml_reliable = _ml_cacc >= ML_MIN_CONFIDENT_ACC
+
+        sig_dir    = sig["direction"]
+        rule_conf  = sig.get("confidence", 0)        # 0-6 quality score from signals.py
+        news_bias_  = (news_bias or {}).get("bias", "NEUTRAL")
+        news_score_ = (news_bias or {}).get("score", 0)
+
+        # ─── Session Bias dari analisis jam tutup sesi ────────────────────
+        _sess_bias_dir   = "NEUTRAL"
+        _sess_bias_score = 0.0
+        _sess_bias_str   = ""
+        try:
+            from data.session_bias import get_current_bias
+            _sb = get_current_bias()
+            if _sb:
+                _sess_bias_dir   = _sb.get("direction", "NEUTRAL")
+                _sess_bias_score = float(_sb.get("score", 0))
+                _sess_bias_str   = _sb.get("strength", "")
+        except Exception:
+            pass
+
+        # ─── Pre-session plan (dari deep analysis saat market tutup) ──────
+        _plan_bias = "NEUTRAL"
+        try:
+            from data.session_bias import get_session_plan
+            _plan = get_session_plan()
+            if _plan:
+                _plan_bias = _plan.get("htf_bias", "NEUTRAL")
+                # Terapkan min_score dari adaptive jika plan lebih ketat
+                import config as _cfg
+                _plan_score = float(_plan.get("min_score", _cfg.MIN_SIGNAL_SCORE))
+                if _plan_score > _cfg.MIN_SIGNAL_SCORE:
+                    _cfg.MIN_SIGNAL_SCORE = _plan_score
+        except Exception:
+            pass
+
+        # Realtime confirmation
+        rt_bias  = rt_data.get("realtime_bias", "NEUTRAL")
+        rt_score = rt_data.get("realtime_score", 0)
+        rt_note  = f" +RT:{rt_bias}" if rt_bias != "NEUTRAL" else ""
+
+        # ─── GUARD: No new position if one already open ─────────────────
+        _open_positions = []
+        if self.mt5_conn and self.mt5_conn.connected:
+            try:
+                _open_positions = self.mt5_conn.mt5.get_positions(self.symbol)
+            except Exception:
+                _open_positions = []
+        _n_open = len(_open_positions)
+
+        if sig_dir in ("BUY", "SELL") and _n_open >= MAX_OPEN_POSITIONS:
+            exec_direction = "WAIT"
+            exec_source    = f"GUARD-MaxPos ({_n_open} open ≥ {MAX_OPEN_POSITIONS})"
+            priority_num   = 0
+
+        # ─── GUARD: HTF Session Bias Counter-Trend Block ────────────────
+        # Jika HTF bias kuat berlawanan (score >= 3.0), blok sinyal counter-trend
+        elif sig_dir in ("BUY", "SELL") and _sess_bias_dir in ("BUY", "SELL") \
+                and sig_dir != _sess_bias_dir and abs(_sess_bias_score) >= 3.0:
+            exec_direction = "WAIT"
+            exec_source    = (f"GUARD-HTF-Bias Session:{_sess_bias_dir}"
+                              f"({_sess_bias_score:+.1f}) vs Signal:{sig_dir} "
+                              f"— counter-trend HTF")
+            priority_num   = 0
+
+        # ─── #1 RULE + ML CONFIRM ★★★ ────────────────────────────────
+        elif sig_dir in ("BUY", "SELL") and ml_certain and ml_dir == sig_dir:
+            ml_prob_aligned = ml_prob_b if sig_dir == "BUY" else ml_prob_s
+            if ml_prob_aligned >= ML_VOTE_THRESHOLD:
+                conf_total     = min(rule_conf + 1, 7)   # ML adds +1
+                exec_direction = sig_dir
+                exec_source    = f"#1-Rule+ML({ml_conf:.0f}%,prob{ml_prob_aligned:.0f}%) ★★★ conf={conf_total}"
+                priority_num   = 1
+            else:
+                # ML same direction but low probability — treat as rule-only
+                exec_direction = sig_dir
+                exec_source    = f"#3-Rule+ML-weak({ml_conf:.0f}%) ★★ conf={rule_conf}"
+                priority_num   = 3
+
+        # ─── #2 ML DISAGREES → CANCEL (only if ML reliable) ────────────
+        elif sig_dir in ("BUY", "SELL") and ml_certain and ml_dir != sig_dir \
+                and ml_conf >= 70 and ml_reliable:
+            ml_prob_oppose = ml_prob_s if sig_dir == "BUY" else ml_prob_b
+            exec_direction = "WAIT"
+            exec_source    = f"#2-ML-CANCEL Rule:{sig_dir} ← ML:{ml_dir}({ml_conf:.0f}%,opp:{ml_prob_oppose:.0f}%)"
+            priority_num   = 2
+
+        # ─── #3 RULE-ONLY ★★ ─────────────────────────────────────────
+        elif sig_dir in ("BUY", "SELL"):
+            ml_status = ""
+            if ml_certain and ml_dir == sig_dir:
+                ml_status = f" [ML:{ml_conf:.0f}%-weak]"
+            elif not ml_certain:
+                ml_status = " [ML:uncertain]"
+            exec_direction = sig_dir
+            exec_source    = f"#3-Rule-Only{ml_status} ★★ conf={rule_conf}"
+            priority_num   = 3
+
+        # ─── #4 ML-ONLY ★ (Rule=WAIT, ML reliable, no structure conflict) ──
+        elif ml_certain and ml_conf >= 70 and ml_reliable:
+            rule_score   = sig.get("score", 0)
+            struct_conflict = ((ml_dir == "SELL" and rule_score > +4.0) or
+                               (ml_dir == "BUY"  and rule_score < -4.0))
+            if struct_conflict:
+                exec_direction = "WAIT"
+                exec_source    = f"#4-ML-SKIP struct conflict score={rule_score:+.1f} vs ML:{ml_dir}"
+                priority_num   = 4
+            else:
+                exec_direction = ml_dir
+                exec_source    = f"#4-ML-Only({ml_conf:.0f}%) ★"
+                priority_num   = 4
+                tp_sl = calculate_smart_tp_sl(
+                    exec_direction, close,
+                    float(row.get("atr", close * 0.001)),
+                    self.df_ind, sig["score"]
+                )
+                sig = dict(sig)
+                sig["direction"] = exec_direction
+                sig["sl"]        = tp_sl["sl"]
+                sig["tp"]        = tp_sl["tp"]
+                sig["tp_dist"]   = tp_sl["tp_dist"]
+                sig["sl_dist"]   = tp_sl["sl_dist"]
+                sig["rr_ratio"]  = tp_sl["rr"]
+                sig["method_tp"] = tp_sl["method_tp"]
+                sig["method_sl"] = tp_sl["method_sl"]
+
+        elif ml_certain and ml_conf >= 70 and not ml_reliable:
+            exec_direction = "WAIT"
+            exec_source    = f"#4-ML-SKIP acc={_ml_cacc:.1f}%<{ML_MIN_CONFIDENT_ACC}%"
+            priority_num   = 4
+
+        # ─── #5 NO-SIGNAL ─────────────────────────────────────────────
         else:
             exec_direction = "WAIT"
-            exec_source    = "WAIT"
+            exec_source    = "#5-NoSignal"
+            priority_num   = 5
 
-        news_risk  = self.news_sentiment.get("risk_level", "UNKNOWN")
-        news_bias_ = (news_bias or {}).get("bias", "NEUTRAL")
+        # Risk note
+        risk_note = ""
+        mstate = sig.get("market_state", "")
+        if mstate in ("RANGE", "UNCLEAR"):
+            risk_note = f" ⚠ Market {mstate}"
+        if news_score_ and abs(news_score_) >= 2:
+            risk_note += f" | News:{news_bias_}({news_score_:+.1f})"
 
-        # Blok hanya jika news HIGH berlawanan arah signal
-        news_conflicts = (
-            (exec_direction == "BUY"  and news_bias_ == "BEARISH") or
-            (exec_direction == "SELL" and news_bias_ == "BULLISH")
-        )
-        if news_risk == "HIGH" and news_conflicts:
-            final_advice   = "AVOID - High Impact News berlawanan sinyal!"
-            exec_direction = "WAIT"
-        elif news_risk == "HIGH":
-            final_advice = f"{consensus} [HIGH news - searah, lanjut dengan hati-hati]"
-        elif news_risk == "MEDIUM":
-            final_advice = f"{consensus} [with caution - MEDIUM news]"
+        # Final advice
+        if "#2-ML-CANCEL" in exec_source:
+            final_advice = f"WAIT — ML cancels Rule {sig_dir} (ML:{ml_dir} {ml_conf:.0f}%)"
+        elif exec_direction in ("BUY", "SELL"):
+            final_advice = f"{exec_direction} — {exec_source}{rt_note}{risk_note}"
         else:
-            final_advice = consensus
+            final_advice = f"WAIT{risk_note}"
 
         result = {
             "symbol":       self.symbol,
@@ -343,10 +521,12 @@ class TradingBot:
             "consensus_dir":   consensus_dir,
             "exec_direction":  exec_direction,
             "exec_source":     exec_source,
+            "priority_num":    priority_num,
             "final_advice":    final_advice,
             "news_risk":       news_risk,
             "news_bias":       news_bias or {},
             "news_sentiment":  self.news_sentiment,
+            "realtime_data":   rt_data,
             # Sumber data — untuk audit di DB
             "data_source":     "MT5" if (self.mt5_conn and self.mt5_conn.connected)
                                else ("TV" if self.use_tv else "Yahoo"),
@@ -368,6 +548,7 @@ class TradingBot:
         CYAN   = "\033[96m"
         BOLD   = "\033[1m"
         RESET  = "\033[0m"
+        DIM    = "\033[2m"
 
         color = GREEN if direct == "BUY" else RED if direct == "SELL" else YELLOW
         sep   = "=" * 60
@@ -402,14 +583,15 @@ class TradingBot:
         print(sep)
 
         print(f"  {BOLD}--- RULE-BASED SIGNAL -----------------------------------{RESET}")
-        tech_sc = sig.get("score_technical", sig["score"])
-        vol_sc  = sig.get("score_volume",   0)
-        smc_sc  = sig.get("score_smc",      0)
-        news_sc = sig.get("score_news",     0)
-        regime  = sig.get("regime",         "?")
+        tech_sc = sig.get("score_technical",  sig["score"])
+        vol_sc  = sig.get("score_volume",    0)
+        smc_sc  = sig.get("score_smc",       0)
+        str_sc  = sig.get("score_structure", 0)
+        news_sc = sig.get("score_news",      0)
+        regime  = sig.get("regime",          "?")
         regime_c = GREEN if regime == "TREND" else RED if regime == "VOLATILE" else YELLOW
         print(f"  Score       : {sig['score']:+.2f}  "
-              f"| Tech:{tech_sc:+.2f}  Vol:{vol_sc:+.2f}  SMC:{smc_sc:+.2f}  News:{news_sc:+.2f}")
+              f"| Tech:{tech_sc:+.2f}  Vol:{vol_sc:+.2f}  SMC:{smc_sc:+.2f}  Str:{str_sc:+.2f}  News:{news_sc:+.2f}")
         print(f"  Regime      : {regime_c}{BOLD}{regime}{RESET}")
         print(f"  Direction   : {BOLD}{color}{direct}{RESET}")
         if sig["sl"]:
@@ -447,6 +629,52 @@ class TradingBot:
                 print(f"    {rc}• {r[:90]}{RESET}")
         print(sep)
 
+        # ── REALTIME DATA (Tick + OrderBook) ──────────────────────────
+        rt = result.get("realtime_data", {})
+        if rt:
+            rt_bias_  = rt.get("realtime_bias", "NEUTRAL")
+            rt_score_ = rt.get("realtime_score", 0)
+            rt_c      = GREEN if rt_bias_ == "BUY" else RED if rt_bias_ == "SELL" else YELLOW
+            tick_m    = rt.get("tick_momentum", {})
+            ob        = rt.get("orderbook", {})
+            spread_d  = rt.get("spread", {})
+            ctick     = rt.get("current_tick", {})
+
+            print(f"  {BOLD}--- REALTIME (Tick + OrderBook) -------------------------{RESET}")
+
+            # Current price
+            if ctick:
+                print(f"  Bid/Ask     : {ctick.get('bid',0):.5f} / {ctick.get('ask',0):.5f}"
+                      f"  Spread: {ctick.get('spread',0):.5f}"
+                      + (f"  {YELLOW}[WIDE!]{RESET}" if spread_d.get("wide") else ""))
+
+            # Tick momentum
+            if tick_m.get("tick_count", 0) > 0:
+                tm_dir = tick_m.get("direction", "NEUTRAL")
+                tm_c   = GREEN if tm_dir == "BUY" else RED if tm_dir == "SELL" else YELLOW
+                br     = tick_m.get("bull_ratio", 0.5)
+                chg    = tick_m.get("price_change", 0)
+                print(f"  Tick (60s)  : {BOLD}{tm_c}{tm_dir}{RESET}  "
+                      f"bull:{br:.0%}  up:{tick_m.get('up_ticks',0)} "
+                      f"dn:{tick_m.get('down_ticks',0)}  "
+                      f"total:{tick_m.get('tick_count',0)}  "
+                      f"chg:{chg:+.3f}")
+
+            # Order book
+            ob_bias_ = ob.get("bias", "NEUTRAL")
+            if ob.get("bid_vol", 0) + ob.get("ask_vol", 0) > 0:
+                ob_c  = GREEN if ob_bias_ == "BUY" else RED if ob_bias_ == "SELL" else YELLOW
+                imbal = ob.get("imbalance", 0)
+                print(f"  OrderBook   : {BOLD}{ob_c}{ob_bias_}{RESET}  "
+                      f"imbalance:{imbal:+.2f}  "
+                      f"bid:{ob.get('bid_vol',0):.1f}  "
+                      f"ask:{ob.get('ask_vol',0):.1f}")
+            else:
+                print(f"  OrderBook   : {DIM}N/A (DOM tidak tersedia di broker ini){RESET}")
+
+            print(f"  RT Score    : {BOLD}{rt_c}{rt_bias_}{RESET}  ({rt_score_:+.2f})")
+            print(sep)
+
         if ml:
             d = ml["direction"]
             ml_color = GREEN if d == "BUY" else RED if d == "SELL" else YELLOW
@@ -459,10 +687,19 @@ class TradingBot:
             print(f"  Model       : {ML_MODEL_TYPE.upper()} (Ensemble+FeatureSelect+SMC)")
             print(f"  Trained on  : {sym_c}{BOLD}{tr_sym}{RESET} / {tr_tf}  ({tr_n:,} candles)"
                   + (f"  {RED}[!] SYMBOL MISMATCH{RESET}" if not sym_ok else ""))
+            _cacc_val   = self.train_result.get('conf_accuracy', 0)
+            _prec_val   = self.train_result.get('precision_buy', 0)
+            _f1_val     = self.train_result.get('f1', 0)
+            _ml_active  = _cacc_val >= ML_MIN_CONFIDENT_ACC
+            _cacc_color = GREEN if _ml_active else (YELLOW if _cacc_val >= 70 else RED)
+            _ml_status  = (f"{GREEN}✓ ML-Only AKTIF{RESET}" if _ml_active else
+                           f"{YELLOW}~ ML-Only NONAKTIF (hanya confirm/veto){RESET}")
             print(f"  Overall Acc : {self.train_result.get('accuracy', 0)}%  |  "
-                  f"Confident Acc: {BOLD}{self.train_result.get('conf_accuracy', 0)}%{RESET}")
-            print(f"  Precision   : {self.train_result.get('precision_buy', 0)}%  |  "
-                  f"F1: {self.train_result.get('f1', 0)}%")
+                  f"Conf Acc: {BOLD}{_cacc_color}{_cacc_val}%{RESET}  "
+                  f"[threshold: {ML_MIN_CONFIDENT_ACC}%]")
+            print(f"  Precision   : {_prec_val}%  |  F1: {_f1_val}%  |  "
+                  f"Vote threshold: {ML_VOTE_THRESHOLD}%")
+            print(f"  ML Status   : {_ml_status}")
             print(f"  Prediction  : {BOLD}{ml_color}{d}{RESET}  (confidence: {ml['confidence']}%)")
             if ml.get("uncertain"):
                 print(f"  {YELLOW}[!] Confidence di bawah threshold - sinyal lemah{RESET}")
@@ -485,22 +722,88 @@ class TradingBot:
             print(f"  Proba BUY   : {GREEN}{lstm['proba_buy']}%{RESET}  |  Proba SELL: {RED}{lstm['proba_sell']}%{RESET}")
             print(sep)
 
-        news_risk  = result.get("news_risk", "UNKNOWN")
-        nr_color   = RED if news_risk == "HIGH" else YELLOW if news_risk == "MEDIUM" else GREEN
         fa         = result.get("final_advice", result["consensus"])
         exec_dir   = result.get("exec_direction", "WAIT")
         exec_src   = result.get("exec_source", "")
         ex_color   = GREEN if exec_dir == "BUY" else RED if exec_dir == "SELL" else YELLOW
 
+        # News daily hint
+        nb = result.get("news_bias", {})
+        nb_bias  = nb.get("bias", "NEUTRAL")
+        nb_score = nb.get("score", 0)
+        nb_color = GREEN if nb_bias == "BULLISH" else RED if nb_bias == "BEARISH" else YELLOW
+
         print(f"  {BOLD}--- FINAL DECISION ---------------------------------------{RESET}")
-        print(f"  News Risk   : {BOLD}{nr_color}{news_risk}{RESET}")
+
+        # Market State
+        _mstate   = result["signal"].get("market_state", "?")
+        _ms_color = GREEN if _mstate == "TREND" else (YELLOW if _mstate == "UNCLEAR" else RED)
+        _conf_val = result["signal"].get("confidence", 0)
+        _conf_max = 7  # 6 from signals + 1 ML
+        _conf_c   = GREEN if _conf_val >= 5 else (YELLOW if _conf_val >= 4 else RED)
+        print(f"  Market State: {BOLD}{_ms_color}{_mstate}{RESET}  |  "
+              f"Confidence: {BOLD}{_conf_c}{_conf_val}/{_conf_max}{RESET}")
+
+        # Session Bias (dari analisis jam tutup sesi)
+        try:
+            from data.session_bias import get_current_bias
+            _sb = get_current_bias()
+            if _sb and _sb.get("direction") in ("BUY", "SELL", "NEUTRAL"):
+                _sb_dir = _sb["direction"]
+                _sb_str = _sb.get("strength", "")
+                _sb_sco = _sb.get("score", 0)
+                _sb_ses = _sb.get("session", "")
+                _sb_ts  = _sb.get("timestamp", "")[:16]
+                _sb_c   = GREEN if _sb_dir == "BUY" else (RED if _sb_dir == "SELL" else YELLOW)
+                print(f"  Session Bias: {BOLD}{_sb_c}{_sb_dir}{RESET}  "
+                      f"(skor: {_sb_sco:+.1f}, {_sb_str})  "
+                      f"{DIM}← {_sb_ses} close  {_sb_ts}{RESET}")
+        except Exception:
+            pass
+
+        print(f"  News Hari ini: {BOLD}{nb_color}{nb_bias}{RESET}  "
+              f"(skor: {nb_score:+.1f})  "
+              f"{DIM}← hint harian saja{RESET}")
         print(f"  Consensus   : {result['consensus']}")
+
+        pnum      = result.get("priority_num", 0)
+        src_color = GREEN if "★★★" in exec_src else (
+                    GREEN if "★★" in exec_src  else (
+                    GREEN if "★"  in exec_src  else (
+                    RED   if ("CANCEL" in exec_src or "VETO" in exec_src or "GUARD" in exec_src)
+                    else CYAN)))
+        print(f"  Priority    : {CYAN}#{pnum}{RESET}")
         print(f"  {BOLD}EKSEKUSI    : {ex_color}{exec_dir}{RESET}  "
-              f"{CYAN}(dari: {exec_src}){RESET}")
-        if exec_dir == "WAIT" and result["consensus"] not in ("NO SIGNAL", "SPLIT (tie)"):
-            ml_c = result.get("ml_pred", {}).get("confidence", 0)
-            print(f"  {YELLOW}[!] Sinyal ada tapi belum masuk — "
-                  f"ML conf {ml_c}% (min 65% untuk auto-trade){RESET}")
+              f"{src_color}({exec_src}){RESET}")
+
+        # Risk note
+        _risk = result.get("final_advice", "")
+        if "⚠" in _risk or "News:" in _risk:
+            print(f"  {YELLOW}Risk Note   : {_risk}{RESET}")
+
+        if exec_dir == "WAIT":
+            src = result.get("exec_source", "")
+            if   "CANCEL"    in src:  wait_reason = "ML cancels rule signal"
+            elif "GUARD"     in src:  wait_reason = "Max posisi aktif tercapai — tunggu posisi tutup"
+            elif "NoSignal"  in src:  wait_reason = "Tidak ada signal cukup kuat"
+            elif "SKIP"      in src:  wait_reason = "Filter block — lihat filter log"
+            else:                     wait_reason = "Menunggu kondisi terpenuhi"
+            print(f"  {YELLOW}[!] WAIT — {wait_reason}{RESET}")
+
+        # Akurasi historis signal serupa dari candle log
+        sa = result.get("sig_accuracy", {})
+        if sa and sa.get("total", 0) >= 3:
+            sa_acc  = sa["accuracy"]
+            sa_tot  = sa["total"]
+            sa_win  = sa["win"]
+            sa_loss = sa["loss"]
+            sa_pct  = sa.get("avg_pct", 0)
+            sa_c    = GREEN if sa_acc >= 60 else YELLOW if sa_acc >= 50 else RED
+            rel_tag = f"  {GREEN}[RELIABLE]{RESET}" if sa.get("reliable") else ""
+            print(f"  Hist Akurasi: {BOLD}{sa_c}{sa_acc}%{RESET}  "
+                  f"({sa_win}W/{sa_loss}L dari {sa_tot} signal serupa)  "
+                  f"avg:{sa_pct:+.3f}%{rel_tag}")
+
         print(sep)
 
         print()

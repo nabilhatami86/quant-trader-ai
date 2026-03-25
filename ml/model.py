@@ -1,3 +1,42 @@
+"""
+ml/model.py — Machine Learning predictor untuk sinyal trading.
+
+Kelas utama:
+  CandlePredictor : ensemble ML classifier (LightGBM + XGBoost + RF + GB + ET)
+
+Arsitektur model:
+  Base models  : LGBMClassifier, XGBClassifier, RandomForest,
+                 GradientBoosting, ExtraTreesClassifier
+  Meta-model   : LogisticRegression (Stacking) dengan CalibratedClassifierCV
+  Feature sel. : SelectKBest (top 70 dari ~120 fitur)
+  Scaling      : RobustScaler (tahan outlier harga ekstrem)
+
+Label generation (target variabel):
+  Lookahead 3 candle ke depan:
+    1 (BUY)  : close[+3] > close[0] * (1 + threshold)
+    0 (SELL) : close[+3] < close[0] * (1 - threshold)
+    Drop     : di antara keduanya (terlalu kecil pergerakannya)
+  Threshold per timeframe:
+    5m=0.08%, 15m=0.12%, 1h=0.20%, 4h=0.35%, 1d=0.60%
+
+Metrics kalibrasi (2026-03, XAUUSD 5m):
+  conf_accuracy  ~79%   (akurasi saat model confident >= 70%)
+  precision      ~68%   (dari semua yang diprediksi BUY, 68% benar)
+  F1 score       ~71%
+
+Mode penggunaan di bot:
+  #1 Rule+ML   : rule signal + ML confident (conf_accuracy >= ML_MIN_CONFIDENT_ACC)
+                 ML bisa veto rule signal jika berlawanan
+  #2 ML-Only   : rule tidak cukup tapi ML sangat confident
+                 Hanya aktif jika conf_accuracy >= ML_MIN_CONFIDENT_ACC (75%)
+  #3 Rule-Only : ML tidak confident — pakai rule signal saja
+
+Retrain:
+  Dipanggil setiap siklus bot (incremental, data baru)
+  Setiap 15 trade tutup via AdaptiveLearner.should_retrain_ml()
+  Setiap session close / weekend via run_market_close_deep_analysis()
+"""
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import (
@@ -58,6 +97,20 @@ DEFAULT_LOOKAHEAD = 3
 
 
 class CandlePredictor:
+    """
+    Ensemble ML classifier untuk prediksi arah candle.
+
+    Model: StackingClassifier (LightGBM + XGBoost + RF + GB + ET)
+           Meta-model: LogisticRegression + CalibratedClassifierCV
+
+    Attributes:
+      trained         : bool — True setelah train() berhasil
+      accuracy        : float — overall test accuracy (%)
+      feature_names   : list — nama 70 fitur yang diseleksi
+      trained_symbol  : str  — simbol yang dipakai saat training
+      train_result    : dict — metrics lengkap dari training terakhir
+    """
+
     def __init__(self, symbol: str = "", timeframe: str = "1h"):
         self.symbol        = symbol.upper()
         self.timeframe     = timeframe
@@ -115,6 +168,7 @@ class CandlePredictor:
             lgb = None
 
         # ── XGBoost — regularized boosting, robust overfit ────────────
+        # scale_pos_weight=1 karena kita sudah fix labeling ke symmetric 1:1
         if XGB_AVAILABLE:
             xgb = XGBClassifier(
                 n_estimators=200,
@@ -178,6 +232,14 @@ class CandlePredictor:
             self.model = rf
 
     def _build_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Bangun feature matrix dari DataFrame OHLCV + indikator.
+        Input  : df dengan kolom OHLCV + hasil add_all_indicators()
+        Output : DataFrame ~120 kolom (sebelum SelectKBest ke 70)
+        Fitur  : return%, volatility, rsi, macd, ema_ratio, adx, bb_pct,
+                 stoch, atr_ratio, obv_change, vwap_ratio, candle patterns,
+                 supertrend, ichimoku, fibonacci levels, dll.
+        """
         close  = df["Close"]
         high   = df["High"]
         low    = df["Low"]
@@ -378,21 +440,22 @@ class CandlePredictor:
 
     def _make_labels(self, df: pd.DataFrame, threshold: float = None):
         """
-        TP/SL Simulation Labeling — jauh lebih akurat dari simple forward return.
+        Symmetric TP/SL Direction Labeling.
 
-        Untuk setiap candle i (simulasi BUY trade):
-          TP = close[i] + atr[i] * tp_mult   (default: 3x ATR)
-          SL = close[i] - atr[i] * sl_mult   (default: 1x ATR → RR 1:3)
+        Untuk setiap candle i:
+          TP = close[i] + atr[i] * 1.0   (1x ATR ke atas)
+          SL = close[i] - atr[i] * 1.0   (1x ATR ke bawah)
 
         Cek N candle ke depan:
-          Jika high[i+k] >= TP lebih dulu  → label = 1  (BUY menang)
-          Jika low[i+k]  <= SL lebih dulu  → label = 0  (BUY kalah = arah SELL)
-          Jika keduanya tidak → NaN (excluded — sideways, tidak informatif)
+          Jika high[i+k] >= TP lebih dulu  → label = 1  (arah BUY)
+          Jika low[i+k]  <= SL lebih dulu  → label = 0  (arah SELL)
+          Jika keduanya tidak → NaN (excluded — sideways)
 
-        Keunggulan vs forward return:
-          - Mencerminkan hasil trade nyata, bukan hanya arah harga akhir
-          - RR asimetri (TP > SL) → ML belajar setup yang worth masuk
-          - Candle sideways otomatis excluded (NaN) → dataset lebih bersih
+        Kenapa symmetric (1:1)?
+          - RR asimetri 1:3 membuat P(SL dulu) = 75% secara matematis di pasar random
+          - Akibatnya label menjadi 78% SELL → model belajar bias SELL terus
+          - Dengan 1:1, label menjadi ~50/50 → ML belajar ARAH, bukan gambling RR
+          - Prediksi arah yang akurat lebih berguna daripada win-rate pada RR tertentu
         """
         close  = df["Close"].values
         high   = df["High"].values
@@ -406,10 +469,10 @@ class CandlePredictor:
             atr = ((df["High"] - df["Low"]).rolling(14).mean()
                    .fillna(0.002 * df["Close"])).values
 
-        # RR 1:3 — sama dengan konfigurasi bot (SL=1x ATR, TP=3x ATR)
-        # Lebih konservatif dari TP=10x ATR di config biar label lebih banyak
-        tp_mult = 3.0
-        sl_mult = 1.0
+        # Symmetric 1:1 — tanya "arah mana yang gerak 1 ATR duluan?"
+        # Ini menghilangkan bias SELL yang terjadi pada RR asimetri
+        tp_mult   = 1.0
+        sl_mult   = 1.0
         lookahead = min(self.lookahead * 10, 30)   # cek lebih jauh untuk TP/SL
 
         # ── Vectorized TP/SL simulation ─────────────────────────────────
@@ -483,6 +546,24 @@ class CandlePredictor:
         return mask
 
     def train(self, df: pd.DataFrame, symbol: str = "", timeframe: str = "") -> dict:
+        """
+        Latih ensemble model dengan data OHLCV + indikator.
+
+        Input  : df — DataFrame dengan OHLCV + add_all_indicators() sudah dijalankan
+        Output : dict metrics — {accuracy, conf_accuracy, precision, recall, f1,
+                                 n_train, n_test, coverage, feature_importance_top5}
+
+        Proses:
+          1. Build features (_build_features)
+          2. Generate labels lookahead N candle (_make_labels)
+          3. Filter kualitas baris (_filter_quality_rows)
+          4. Train/test split (ML_TRAIN_SPLIT=0.8)
+          5. SelectKBest (top 70 fitur)
+          6. Fit StackingClassifier + CalibratedClassifierCV
+          7. Hitung conf_accuracy (akurasi pada sample >= CONFIDENCE_THRESHOLD)
+
+        Jika data < 100 candle valid → return None, self.trained tetap False.
+        """
         X_raw = self._build_features(df)
         y     = self._make_labels(df)
 
@@ -548,6 +629,21 @@ class CandlePredictor:
         }
 
     def predict(self, df: pd.DataFrame, predict_symbol: str = "") -> dict:
+        """
+        Prediksi arah candle berikutnya menggunakan baris terakhir dari df.
+
+        Input  : df — DataFrame dengan OHLCV + indikator (baris terakhir = candle sekarang)
+        Output : dict — {direction, confidence, proba_buy, proba_sell,
+                         uncertain, trained_symbol, symbol_match, [warning]}
+
+          direction  : "BUY" / "SELL" / "WAIT" (uncertain)
+          confidence : probabilitas tertinggi dalam persen (0-100)
+          uncertain  : True jika confidence < CONFIDENCE_THRESHOLD (70%)
+          proba_buy  : probabilitas BUY (0-1)
+          proba_sell : probabilitas SELL (0-1)
+
+        Guard: jika trained_symbol != predict_symbol → return WAIT + warning.
+        """
         if not self.trained:
             return {
                 "direction":      "UNKNOWN",

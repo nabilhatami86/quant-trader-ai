@@ -1,3 +1,38 @@
+"""
+data/candle_log.py — Logging candle + indikator + sinyal, memory pola historis.
+
+Fungsi utama:
+  log_candle(symbol, tf, df_ind, signal)
+      Simpan candle terbaru + indikator + sinyal ke CSV:
+      logs/candles_{symbol}_{tf}.csv
+
+  find_similar_candles(symbol, tf, current_row, top_k=5)
+      Cari N candle historis yang paling mirip secara teknikal
+      menggunakan cosine similarity atas 12 fitur utama:
+      body, wick_up, wick_down, rsi, macd, adx, atr, ema_ratio,
+      bb_pct, volume_ratio, supertrend, stoch_k
+
+  update_signal_outcomes(symbol, tf, df_ind, lookahead=3)
+      Perbarui kolom outcome di CSV setelah 3 candle berlalu:
+      "correct" jika harga bergerak searah sinyal, "wrong" jika tidak
+
+  get_signal_accuracy(symbol, tf, current_row, direction, top_k=20)
+      Hitung akurasi historis sinyal serupa:
+      dari 20 candle serupa, berapa % yang outcome-nya correct?
+
+  print_similar_report(result)
+      Tampilkan laporan pola serupa di terminal (warna-warni)
+
+  print_recent(symbol, tf, n)
+      Tampilkan N candle terakhir dari CSV log
+
+Storage:
+  logs/candles_{symbol}_{tf}.csv — 38 kolom:
+  time, OHLC, candle_dir, body, wick_up/down, pattern,
+  rsi, ema20/50, macd, histogram, adx, atr, signal, score,
+  ml_direction, ml_prob, outcome, outcome_time, ...
+"""
+
 import os
 import numpy as np
 import pandas as pd
@@ -12,7 +47,7 @@ def _log_path(symbol: str, timeframe: str) -> str:
 
 
 def log_candle(symbol: str, timeframe: str, df_ind: "pd.DataFrame",
-               signal: dict = None) -> None:
+               signal: dict = None, realtime_data: dict = None) -> None:
     if df_ind is None or df_ind.empty:
         return
 
@@ -51,34 +86,62 @@ def log_candle(symbol: str, timeframe: str, df_ind: "pd.DataFrame",
         "score":     signal.get("score", "") if signal else "",
         "sl":        signal.get("sl", "") if signal else "",
         "tp":        signal.get("tp", "") if signal else "",
+        # Realtime data dari MT5 (tick + orderbook)
+        "tick_dir":   (realtime_data or {}).get("tick_momentum", {}).get("direction", ""),
+        "tick_bull%": round((realtime_data or {}).get("tick_momentum", {}).get("bull_ratio", 0) * 100, 1),
+        "ob_bias":    (realtime_data or {}).get("orderbook", {}).get("bias", ""),
+        "ob_imbal":   (realtime_data or {}).get("orderbook", {}).get("imbalance", ""),
+        "rt_bias":    (realtime_data or {}).get("realtime_bias", ""),
+        "rt_score":   (realtime_data or {}).get("realtime_score", ""),
+        "spread":     (realtime_data or {}).get("current_tick", {}).get("spread", ""),
         "logged_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
     df_row = pd.DataFrame([record])
+    current_cols = set(record.keys())
 
     if os.path.exists(path):
-        existing = pd.read_csv(path)
-        if len(existing) and existing["time"].iloc[-1] == record["time"]:
-            existing = existing.iloc[:-1]
-            existing = pd.concat([existing, df_row], ignore_index=True)
-            existing.to_csv(path, index=False)
-        else:
-            df_row.to_csv(path, mode="a", header=False, index=False)
+        try:
+            existing = pd.read_csv(path, on_bad_lines="skip")
+            # Schema changed (e.g. realtime columns added) → restart file
+            if set(existing.columns) != current_cols:
+                df_row.to_csv(path, index=False)
+                return
+            if len(existing) and existing["time"].iloc[-1] == record["time"]:
+                existing = existing.iloc[:-1]
+                existing = pd.concat([existing, df_row], ignore_index=True)
+                existing.to_csv(path, index=False)
+            else:
+                df_row.to_csv(path, mode="a", header=False, index=False)
+        except Exception:
+            # Corrupted CSV → overwrite
+            df_row.to_csv(path, index=False)
     else:
         df_row.to_csv(path, index=False)
 
 
+def _v(row, key, default=0):
+    """Safe float — returns default when key is missing or None/NaN."""
+    val = row.get(key)
+    if val is None:
+        return float(default)
+    try:
+        v = float(val)
+        return default if (v != v) else v   # NaN check
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def _candle_features(row: pd.Series) -> np.ndarray:
-    rng   = float(row.get("body", 0)) + float(row.get("wick_up", 0)) + float(row.get("wick_down", 0))
-    rng   = rng if rng > 0 else 1.0
-    body  = float(row.get("body", 0))
-    wu    = float(row.get("wick_up", 0))
-    wd    = float(row.get("wick_down", 0))
-    rsi   = float(row.get("rsi", 50))
-    adx   = float(row.get("adx", 0))
-    ema20 = float(row.get("ema20", 1))
-    ema50 = float(row.get("ema50", 1))
-    hist  = float(row.get("histogram", 0))
+    body  = _v(row, "body")
+    wu    = _v(row, "wick_up")
+    wd    = _v(row, "wick_down")
+    rng   = (body + wu + wd) or 1.0
+    rsi   = _v(row, "rsi", 50)
+    adx   = _v(row, "adx")
+    ema20 = _v(row, "ema20", 1)
+    ema50 = _v(row, "ema50", 1)
+    hist  = _v(row, "histogram")
     bull  = 1.0 if str(row.get("candle", "")) == "BULLISH" else -1.0
 
     return np.array([
@@ -97,13 +160,32 @@ def _candle_features(row: pd.Series) -> np.ndarray:
 _WEIGHTS = np.array([1.5, 0.8, 0.8, 2.0, 1.0, 2.5, 1.5, 1.5])
 
 
+def _load_df(symbol: str, timeframe: str) -> pd.DataFrame:
+    """
+    Load candle log — DB sebagai sumber utama (lebih banyak data + SMC),
+    fallback ke CSV kalau DB tidak tersedia.
+    """
+    try:
+        from services.db_logger import load_candle_logs_df
+        df = load_candle_logs_df(symbol, timeframe, limit=10000)
+        if not df.empty:
+            return df
+    except Exception:
+        pass
+    # Fallback ke CSV
+    path = _log_path(symbol, timeframe)
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    return pd.DataFrame()
+
+
 def find_similar_candles(symbol: str, timeframe: str,
                           current_row: pd.Series,
                           top_k: int = 15,
                           lookahead: int = 3) -> dict:
     """
-    Cari candle historis yang paling mirip ke candle sekarang,
-    lihat apa yang terjadi setelahnya, dan kembalikan bias + win rate.
+    Cari candle historis yang paling mirip ke candle sekarang.
+    Sumber data: DB (utama, lebih banyak) → CSV (fallback).
 
     Returns dict:
       bias       : "BUY" | "SELL" | "NEUTRAL"
@@ -111,19 +193,23 @@ def find_similar_candles(symbol: str, timeframe: str,
       buy_count  : int
       sell_count : int
       total      : int
-      avg_dist   : float  (jarak rata-rata, makin kecil makin mirip)
+      avg_dist   : float
       matches    : list of dicts
+      source     : "DB" | "CSV"
     """
-    path = _log_path(symbol, timeframe)
-    if not os.path.exists(path):
-        return {"bias": "NEUTRAL", "win_rate": 0, "buy_count": 0,
-                "sell_count": 0, "total": 0, "avg_dist": 99, "matches": []}
+    df = _load_df(symbol, timeframe)
+    source = "DB" if df is not None and not df.empty else "CSV"
 
-    df = pd.read_csv(path)
+    if df is None or df.empty:
+        return {"bias": "NEUTRAL", "win_rate": 0, "buy_count": 0,
+                "sell_count": 0, "total": 0, "avg_dist": 99, "matches": [],
+                "source": "none"}
+
     # Butuh minimal top_k + lookahead baris
     if len(df) < top_k + lookahead + 5:
         return {"bias": "NEUTRAL", "win_rate": 0, "buy_count": 0,
-                "sell_count": 0, "total": 0, "avg_dist": 99, "matches": []}
+                "sell_count": 0, "total": 0, "avg_dist": 99, "matches": [],
+                "source": source}
 
     cur_feat = _candle_features(current_row)
 
@@ -199,6 +285,7 @@ def find_similar_candles(symbol: str, timeframe: str,
         "total":      total,
         "avg_dist":   avg_dist,
         "matches":    matches[:5],
+        "source":     source,
     }
 
 
@@ -272,6 +359,174 @@ def backfill_candle_log(symbol: str, timeframe: str,
     return len(df_new)
 
 
+def update_signal_outcomes(symbol: str, timeframe: str,
+                           df_ind: "pd.DataFrame",
+                           lookahead: int = 3) -> int:
+    """
+    Perbarui kolom outcome/outcome_pct untuk baris yang sudah ada signal-nya
+    tapi belum ada outcome (karena saat itu belum ada cukup candle ke depan).
+
+    outcome     : WIN | LOSS | FLAT
+    outcome_pct : % perubahan harga setelah lookahead candle
+
+    Dipanggil setiap siklus — otomatis update baris lama yang sudah bisa dievaluasi.
+    Returns: jumlah baris yang diupdate.
+    """
+    # Load dari DB (utama) atau CSV (fallback)
+    df = _load_df(symbol, timeframe)
+    use_db = False
+    try:
+        from services.db_logger import load_candle_logs_df as _ldf
+        _test = _ldf(symbol, timeframe, limit=1)
+        use_db = not _test.empty
+    except Exception:
+        pass
+
+    path = _log_path(symbol, timeframe)
+    if df is None or df.empty:
+        if not os.path.exists(path):
+            return 0
+        df = pd.read_csv(path)
+        use_db = False
+
+    if len(df) < lookahead + 2:
+        return 0
+
+    if "outcome" not in df.columns:
+        df["outcome"]     = ""
+        df["outcome_pct"] = ""
+
+    if df_ind is not None and not df_ind.empty:
+        price_map = {str(ts)[:19]: float(r["Close"])
+                     for ts, r in df_ind.iterrows()}
+    else:
+        price_map = {}
+
+    updated_csv = 0
+    db_updates  = []
+    df = df.reset_index(drop=True)
+
+    for i, row in df.iterrows():
+        sig = str(row.get("signal", "")).strip()
+        if sig not in ("BUY", "SELL"):
+            continue
+        if str(row.get("outcome", "")).strip() not in ("", "nan"):
+            continue
+        if i + lookahead >= len(df):
+            continue
+
+        close_now = float(row.get("close", 0) or 0)
+        future_time  = str(df.iloc[i + lookahead]["time"])[:19]
+        close_future = price_map.get(future_time,
+                       float(df.iloc[i + lookahead]["close"] or 0))
+
+        if close_now == 0:
+            continue
+
+        pct = round((close_future - close_now) / close_now * 100, 4)
+        outcome = ("WIN"  if (sig == "BUY"  and pct >  0.005) else
+                   "LOSS" if (sig == "BUY"  and pct < -0.005) else
+                   "WIN"  if (sig == "SELL" and pct < -0.005) else
+                   "LOSS" if (sig == "SELL" and pct >  0.005) else "FLAT")
+
+        df.at[i, "outcome"]     = outcome
+        df.at[i, "outcome_pct"] = pct
+        updated_csv += 1
+
+        # Kumpulkan untuk update DB
+        try:
+            import pandas as _pd
+            ts = _pd.Timestamp(str(row.get("time", ""))[:19]).tz_localize("UTC")
+            db_updates.append({"timestamp": ts, "outcome": outcome, "outcome_pct": pct})
+        except Exception:
+            pass
+
+    # Update CSV
+    if updated_csv > 0 and os.path.exists(path):
+        df.to_csv(path, index=False)
+
+    # Update DB
+    if db_updates and use_db:
+        try:
+            from services.db_logger import update_outcomes_in_db
+            update_outcomes_in_db(symbol, timeframe, db_updates)
+        except Exception:
+            pass
+
+    return updated_csv
+
+
+def get_signal_accuracy(symbol: str, timeframe: str,
+                        current_row: "pd.Series",
+                        signal_dir: str,
+                        top_k: int = 20) -> dict:
+    """
+    Cari candle historis yang paling mirip DAN punya signal yang sama,
+    hitung akurasi (WIN rate) dari signal tersebut.
+
+    Returns dict:
+      accuracy   : float (0-100) — % WIN dari signal serupa
+      total      : int — jumlah sample
+      win        : int
+      loss       : int
+      avg_pct    : float — rata-rata % keuntungan/kerugian
+      reliable   : bool — True kalau sample >= 5 dan accuracy >= 55
+    """
+    df = _load_df(symbol, timeframe)
+    if df is None or df.empty:
+        return {"accuracy": 0, "total": 0, "reliable": False}
+
+    # Filter: hanya baris yg punya signal sama DAN sudah ada outcome
+    df_sig = df[
+        (df["signal"] == signal_dir) &
+        (df["outcome"].isin(["WIN", "LOSS", "FLAT"]))
+    ].copy()
+
+    if len(df_sig) < 3:
+        return {"accuracy": 0, "total": len(df_sig), "reliable": False}
+
+    cur_feat = _candle_features(current_row)
+
+    dists = []
+    for i, row in df_sig.iterrows():
+        feat = _candle_features(row)
+        diff = (cur_feat - feat) * _WEIGHTS
+        dist = float(np.sqrt((diff ** 2).sum()))
+        dists.append((i, dist))
+
+    dists.sort(key=lambda x: x[1])
+    top_idx = [i for i, _ in dists[:top_k]]
+    subset  = df_sig.loc[df_sig.index.isin(top_idx)]
+
+    win  = int((subset["outcome"] == "WIN").sum())
+    loss = int((subset["outcome"] == "LOSS").sum())
+    flat = int((subset["outcome"] == "FLAT").sum())
+    total = win + loss + flat
+
+    if total == 0:
+        return {"accuracy": 0, "total": 0, "reliable": False}
+
+    accuracy = round(win / total * 100, 1)
+
+    pcts = []
+    for v in subset["outcome_pct"]:
+        try:
+            pcts.append(float(v))
+        except (ValueError, TypeError):
+            pass
+    avg_pct = round(sum(pcts) / len(pcts), 4) if pcts else 0
+
+    return {
+        "accuracy":  accuracy,
+        "total":     total,
+        "win":       win,
+        "loss":      loss,
+        "flat":      flat,
+        "avg_pct":   avg_pct,
+        "reliable":  total >= 5 and accuracy >= 55,
+    }
+
+
 def print_similar_report(result: dict) -> None:
     if not result or result["total"] == 0:
         return
@@ -287,7 +542,8 @@ def print_similar_report(result: dict) -> None:
     bc   = GREEN if bias == "BUY" else RED if bias == "SELL" else YELLOW
     wr   = result["win_rate"]
 
-    print(f"\n  {BOLD}[CANDLE MEMORY]{RESET}  "
+    src_tag = f"  {DIM}[{result.get('source','?').upper()}]{RESET}"
+    print(f"\n  {BOLD}[CANDLE MEMORY]{RESET}{src_tag}  "
           f"mirip ditemukan: {result['total']}  |  "
           f"BUY {result['buy_count']}  SELL {result['sell_count']}  |  "
           f"bias: {bc}{BOLD}{bias}{RESET}  ({wr:.0f}%)")

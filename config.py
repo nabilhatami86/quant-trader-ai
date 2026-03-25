@@ -1,3 +1,20 @@
+"""
+config.py — Konfigurasi terpusat trading bot XAUUSD (Gold/USD).
+
+Dibagi menjadi 3 bagian:
+  UMUM    : berlaku untuk semua mode (indikator, sinyal, ML, risk)
+  MICRO   : mode akun demo / latihan / modal kecil (--micro)
+  REAL    : mode akun real ~$60 USD, target $15-20/trade (--real)
+
+Catatan kalibrasi (update 2026-03):
+  - ML conf_accuracy aktual ~79% → ML_MIN_CONFIDENT_ACC=75%
+  - ML precision aktual ~68%     → ML_VOTE_THRESHOLD=65%
+  - RSI/MACD diturunkan (1.0) karena terlalu reaktif di M5
+  - Supertrend/Ichimoku dinaikkan (3.5) karena lebih akurat di trending
+  - MIN_SIGNAL_SCORE diturunkan ke 3.0 karena max score lebih kecil setelah
+    bobot dikecilkan; counter-trend gate tetap 2x (6.0)
+"""
+
 # ==============================================================
 #  UMUM — berlaku untuk semua mode kecuali di-override
 # ==============================================================
@@ -63,16 +80,17 @@ ADX_TREND_MIN    = 25
 MIN_SIGNAL_SCORE = 5
 WEIGHTS = {
     # Traditional indicators
-    "rsi":            2.0,
-    "macd":           2.0,
-    "ema_cross":      2.0,
+    # RSI & MACD diturunkan — terlalu reaktif di M5, sering SELL saat koreksi uptrend
+    "rsi":            1.0,   # 2.0→1.0: oscillator M5 terlalu noise
+    "macd":           1.0,   # 2.0→1.0: lagging, false SELL saat pullback uptrend
+    "ema_cross":      2.5,   # 2.0→2.5: trend alignment lebih penting
     "bb":             1.0,
-    "stoch":          1.5,
-    "adx":            1.0,
+    "stoch":          1.0,   # 1.5→1.0: terlalu reaktif di M5
+    "adx":            1.5,   # 1.0→1.5: trend strength sangat penting
     "candle":         0.5,
     # Volume indicators
     "obv":            1.5,   # On Balance Volume
-    "vwap":           1.5,   # Volume Weighted Average Price
+    "vwap":           2.0,   # 1.5→2.0: price vs VWAP lebih reliable
     "williams_r":     1.0,   # Williams %R
     "cci":            1.0,   # Commodity Channel Index
     "volume":         1.0,   # Volume spike + divergence
@@ -81,17 +99,44 @@ WEIGHTS = {
     "pattern_ex":     1.5,   # Three Soldiers/Crows, Morning/Evening Star, Harami
     # Structure & Divergence (bobot tinggi — sinyal konfirmasi kuat)
     "rsi_div":        4.0,   # RSI Divergence — reversal terkuat
-    "momentum_chain": 2.0,   # Market Structure (HH+HL / LL+LH)
+    "momentum_chain": 2.5,   # 2.0→2.5: HH+HL / LL+LH structure
     # Trend & Level indicators
     "sma":            1.5,   # SMA Golden/Death Cross
     "fibonacci":      2.0,   # Fibonacci Retracement levels
+    # Trend-following indicators — dinaikkan karena lebih akurat di M5 trending
+    "supertrend":     3.5,   # 2.5→3.5: ATR-based, leading indicator terbaik
+    "mfi":            1.5,   # Money Flow Index (volume-weighted RSI)
+    "psar":           2.0,   # 1.5→2.0: real-time trend flip
+    "ichimoku":       3.5,   # 2.5→3.5: best multi-timeframe trend filter
 }
 
 # ML
-ML_ENABLED     = True
-ML_LOOKBACK    = 20
-ML_TRAIN_SPLIT = 0.8
-ML_MODEL_TYPE  = "ensemble"
+ML_ENABLED            = True
+ML_LOOKBACK           = 20
+ML_TRAIN_SPLIT        = 0.8
+ML_MODEL_TYPE         = "ensemble"
+ML_MIN_CONFIDENT_ACC  = 75.0   # ML-Only aktif jika conf_accuracy >= nilai ini
+                               # Kalibrasi: model saat ini conf_acc ~79% → threshold 75%
+ML_VOTE_THRESHOLD     = 65     # ML prob% minimum untuk join voting di #1 Rule+ML
+                               # Kalibrasi: model precision ~68% → threshold 65%
+
+# Decision Engine — hard filters
+NEWS_HIGH_BLOCK       = True   # HIGH news event → selalu NO TRADE (terlalu volatile)
+NO_TRADE_ZONE_PCT     = 0.5    # ATR multiplier: jarak "terlalu dekat" support/resistance
+MIN_SIGNAL_SCORE      = 3.0    # recalibrated: RSI+MACD diturunkan → max score lebih kecil
+MIN_QUALITY_SCORE     = 4      # min quality points (max 6): trend+candle+structure+momentum
+MAX_OPEN_POSITIONS    = 1      # blok entry baru kalau posisi >= nilai ini
+
+# Anti-Overtrading
+TRADE_COOLDOWN_MIN    = 15     # menit cooldown setelah trade apapun (WIN/LOSS)
+SL_COOLDOWN_MIN       = 30     # menit cooldown ekstra setelah kena SL
+MAX_TRADES_PER_HOUR   = 2      # maksimal N trade per jam (hard cap)
+MAX_DAILY_TRADES      = 8      # stop trading setelah N trade hari ini
+
+# Lot safety cap
+MAX_LOT_SAFE          = 0.03   # batas lot default — naik hanya jika win rate >= 50%
+MAX_LOT_LOSING        = 0.01   # lot diturunkan ke 0.01 saat win rate < 35%
+MIN_SL_PIPS           = 12.0   # SL minimum 12 pips dari entry (noise filter XAUUSD M5)
 
 # SL / TP umum  —  RR 1:10
 AUTO_TP_SL        = False  # OFF = pakai ATR multiplier di bawah
@@ -158,3 +203,7 @@ REAL_AUTO_LOT_MIN = 0.01   # batas minimal lot
 # 1 trade menang = tutup 10 trade rugi
 REAL_ATR_SL     = 1.0    # SL = 1x ATR
 REAL_ATR_TP     = 10.0   # TP = 10x ATR
+
+REAL_MAX_DAILY_LOSS   = 5.0   # stop trading jika rugi kumulatif hari ini >= $5
+REAL_MAX_FLOATING_USD = 3.0   # stop jika floating loss >= -$3
+REAL_SL_COOLDOWN      = 3     # tunggu N siklus setelah SL kena sebelum trade lagi

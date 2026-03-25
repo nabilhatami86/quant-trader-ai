@@ -1,3 +1,45 @@
+"""
+broker/mt5_connector.py — Antarmuka MetaTrader 5: koneksi, order, posisi, data.
+
+Kelas utama:
+  MT5Connector    : koneksi & data (OHLCV, tick, posisi, histori, akun)
+  SignalExecutor  : eksekusi order, manajemen posisi, guard anti-overtrading
+
+MT5Connector — metode penting:
+  connect()                  : buka koneksi ke terminal MT5
+  get_ohlcv(symbol, tf, n)   : ambil N candle OHLCV dari MT5
+  get_current_price(symbol)  : bid/ask terakhir
+  get_positions(symbol)      : posisi terbuka saat ini
+  get_history(days)          : histori deal tertutup
+  calculate_auto_lot(...)    : hitung lot otomatis berdasarkan balance
+  place_order(...)           : kirim order BUY/SELL ke MT5
+  modify_position(ticket,..) : ubah SL/TP posisi terbuka
+  close_position(ticket)     : tutup posisi
+
+SignalExecutor — metode penting:
+  should_trade(signal, ml)   : cek semua guard sebelum entry
+                               (cooldown, max/hour, max/day, max positions)
+  execute(signal, ml)        : hitung lot → place_order → log journal
+  sync_closed_positions()    : sinkronisasi posisi tutup → update journal P&L
+  manage_positions(signal)   : check breakeven, trailing stop, partial TP, SL risk
+  check_breakeven()          : pindah SL ke entry+buffer jika profit >= trigger
+  update_trailing_stop()     : gerakkan SL mengikuti harga
+
+Anti-Overtrading Guards (di should_trade):
+  TRADE_COOLDOWN_MIN  (15)   : jeda minimum antar trade apapun
+  SL_COOLDOWN_MIN     (30)   : jeda ekstra setelah kena SL
+  MAX_TRADES_PER_HOUR  (2)   : maksimal N trade per jam
+  MAX_DAILY_TRADES     (8)   : stop trading setelah N trade hari ini
+  MAX_OPEN_POSITIONS   (1)   : blok entry baru jika masih ada posisi terbuka
+
+P&L Sync:
+  Menggunakan deal.position_id (bukan deal.order) sebagai key mapping.
+  Net P&L = profit + swap + fee (sudah include semua biaya).
+
+Konfigurasi via .env atau environment variables:
+  MT5_PATH, MT5_SERVER, MT5_LOGIN, MT5_PASSWORD
+"""
+
 import os
 import time
 from datetime import datetime
@@ -356,7 +398,9 @@ class MT5Connector:
                 print(f"     Ticket: #{result.order}  SL: {sl}  TP: {tp}")
             try:
                 from data.trade_journal import log_entry
-                log_entry(symbol_key, "", result.order, direction,
+                # _journal_tf diset dari SignalExecutor sebelum order
+                _tf = getattr(self, "_journal_tf", "")
+                log_entry(symbol_key, _tf, result.order, direction,
                           price, sl or 0, tp or 0, lot, comment)
             except Exception:
                 pass
@@ -591,7 +635,15 @@ class MT5Connector:
         return [self._fmt_position(p) for p in self._raw_positions(symbol_key)]
 
     def get_ohlcv(self, symbol_key: str, timeframe: str = "1h",
-                  count: int = 1000) -> "pd.DataFrame":
+                  count: int = 1000, include_forming: bool = True) -> "pd.DataFrame":
+        """
+        Ambil data OHLCV dari MT5.
+
+        include_forming=True  → sertakan candle yang sedang terbentuk (realtime live)
+                                 df.iloc[-1] = candle LIVE (harga bergerak)
+        include_forming=False → hanya candle yang sudah CLOSED
+                                 df.iloc[-1] = candle terakhir yang sudah tutup
+        """
         import pandas as pd
 
         if not self.connected:
@@ -612,7 +664,8 @@ class MT5Connector:
         symbol = SYMBOL_MAP.get(symbol_key, symbol_key)
         mt5.symbol_select(symbol, True)
 
-        rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+        fetch_count = count if include_forming else count + 1
+        rates = mt5.copy_rates_from_pos(symbol, tf, 0, fetch_count)
         if rates is None or len(rates) == 0:
             print(f"[ERROR] MT5 get_ohlcv gagal: {mt5.last_error()}")
             return pd.DataFrame()
@@ -627,7 +680,157 @@ class MT5Connector:
             "close":       "Close",
             "tick_volume": "Volume",
         })
-        return df[["Open", "High", "Low", "Close", "Volume"]]
+        df = df[["Open", "High", "Low", "Close", "Volume"]]
+
+        if not include_forming:
+            # Buang candle forming (baris terakhir = posisi 0 di MT5)
+            df = df.iloc[:-1]
+
+        return df
+
+    def get_realtime_data(self, symbol_key: str, tick_seconds: int = 60) -> dict:
+        """
+        Kumpulkan data realtime dari MT5 untuk memperkuat analisis:
+          - tick_momentum : arah pergerakan harga dalam N detik terakhir
+          - orderbook     : tekanan beli vs jual dari order yang antri (DOM)
+          - spread        : lebar spread saat ini vs normal
+          - current_tick  : harga bid/ask terkini
+
+        Return: {
+          "tick_momentum": {"direction", "bull_ratio", "up_ticks", "down_ticks",
+                            "tick_count", "price_change", "score"},
+          "orderbook":     {"imbalance", "bias", "bid_vol", "ask_vol",
+                            "top_bids", "top_asks", "score"},
+          "spread":        {"current", "normal", "ratio", "wide"},
+          "current_tick":  {"bid", "ask", "last", "spread"},
+          "realtime_score": float,   # -3 s/d +3, positif=bullish
+          "realtime_bias":  str,     # BUY / SELL / NEUTRAL
+        }
+        """
+        import pandas as pd
+        from datetime import datetime, timedelta, timezone
+
+        if not self.connected:
+            return {}
+
+        symbol = SYMBOL_MAP.get(symbol_key, symbol_key)
+        mt5.symbol_select(symbol, True)
+
+        result = {}
+
+        # ── 1. Current Tick (bid/ask/last) ───────────────────────────
+        tick = mt5.symbol_info_tick(symbol)
+        if tick:
+            result["current_tick"] = {
+                "bid":    tick.bid,
+                "ask":    tick.ask,
+                "last":   tick.last,
+                "spread": round(tick.ask - tick.bid, 5),
+                "time":   datetime.fromtimestamp(tick.time, tz=timezone.utc),
+            }
+        else:
+            result["current_tick"] = {}
+
+        # ── 2. Tick Momentum (60 detik terakhir) ─────────────────────
+        try:
+            now      = datetime.now(timezone.utc)
+            from_dt  = now - timedelta(seconds=tick_seconds)
+            ticks    = mt5.copy_ticks_range(
+                symbol, from_dt, now, mt5.COPY_TICKS_ALL
+            )
+            if ticks is not None and len(ticks) >= 5:
+                df_t   = pd.DataFrame(ticks)
+                prices = df_t["bid"].values   # pakai bid sebagai harga acuan
+                up   = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
+                down = sum(1 for i in range(1, len(prices)) if prices[i] < prices[i-1])
+                total = up + down
+                bull_ratio = (up / total) if total > 0 else 0.5
+                direction  = ("BUY"  if bull_ratio > 0.58 else
+                              "SELL" if bull_ratio < 0.42 else "NEUTRAL")
+                # Score -1.5 s/d +1.5
+                tick_score = round((bull_ratio - 0.5) * 3.0, 2)
+                result["tick_momentum"] = {
+                    "direction":    direction,
+                    "bull_ratio":   round(bull_ratio, 3),
+                    "up_ticks":     up,
+                    "down_ticks":   down,
+                    "tick_count":   len(prices),
+                    "price_change": round(float(prices[-1] - prices[0]), 5),
+                    "score":        tick_score,
+                }
+            else:
+                result["tick_momentum"] = {"direction": "NEUTRAL", "score": 0}
+        except Exception:
+            result["tick_momentum"] = {"direction": "NEUTRAL", "score": 0}
+
+        # ── 3. Order Book / DOM ───────────────────────────────────────
+        try:
+            added = mt5.market_book_add(symbol)
+            book  = mt5.market_book_get(symbol) if added else None
+            if added:
+                mt5.market_book_release(symbol)
+            if book:
+                bid_entries = [(b.price, b.volume) for b in book
+                               if b.type == mt5.BOOK_TYPE_BUY]
+                ask_entries = [(b.price, b.volume) for b in book
+                               if b.type == mt5.BOOK_TYPE_SELL]
+                bid_vol = sum(v for _, v in bid_entries)
+                ask_vol = sum(v for _, v in ask_entries)
+                total_v = bid_vol + ask_vol
+                imbalance = ((bid_vol - ask_vol) / total_v
+                             if total_v > 0 else 0.0)
+                ob_bias  = ("BUY"  if imbalance >  0.15 else
+                            "SELL" if imbalance < -0.15 else "NEUTRAL")
+                ob_score = round(imbalance * 1.5, 2)   # -1.5 s/d +1.5
+                result["orderbook"] = {
+                    "imbalance": round(imbalance, 3),
+                    "bias":      ob_bias,
+                    "bid_vol":   round(bid_vol, 2),
+                    "ask_vol":   round(ask_vol, 2),
+                    "top_bids":  bid_entries[:3],
+                    "top_asks":  ask_entries[:3],
+                    "score":     ob_score,
+                }
+            else:
+                result["orderbook"] = {"bias": "NEUTRAL", "score": 0,
+                                       "imbalance": 0}
+        except Exception:
+            result["orderbook"] = {"bias": "NEUTRAL", "score": 0,
+                                   "imbalance": 0}
+
+        # ── 4. Spread Analysis ────────────────────────────────────────
+        try:
+            si = mt5.symbol_info(symbol)
+            if si:
+                spread_now    = tick.ask - tick.bid if tick else si.spread * si.point
+                spread_normal = si.spread_float * si.point if si.spread_float > 0 \
+                                else spread_now
+                spread_ratio  = spread_now / spread_normal if spread_normal > 0 else 1.0
+                wide_spread   = spread_ratio > 2.0
+                result["spread"] = {
+                    "current": round(spread_now, 5),
+                    "normal":  round(spread_normal, 5),
+                    "ratio":   round(spread_ratio, 2),
+                    "wide":    wide_spread,
+                }
+            else:
+                result["spread"] = {"wide": False, "ratio": 1.0}
+        except Exception:
+            result["spread"] = {"wide": False, "ratio": 1.0}
+
+        # ── 5. Gabungkan score ────────────────────────────────────────
+        tick_sc = result.get("tick_momentum", {}).get("score", 0)
+        ob_sc   = result.get("orderbook",     {}).get("score", 0)
+        wide    = result.get("spread",        {}).get("wide",  False)
+
+        realtime_score = round(tick_sc + ob_sc, 2)
+        if wide:
+            realtime_score *= 0.5   # spread melebar → kurangi keyakinan
+
+        result["realtime_score"] = realtime_score
+        result["realtime_bias"]  = ("BUY"  if realtime_score >  0.5 else
+                                    "SELL" if realtime_score < -0.5 else "NEUTRAL")
+        return result
 
     def get_history(self, days: int = 7) -> list:
         import datetime as dt
@@ -726,14 +929,84 @@ class SignalExecutor:
         self.risk_per_trade = risk_per_trade
         self.real_mode      = real_mode
         self.ml_min_conf    = ml_min_conf
-        self.last_sig       = None
-        self.last_tick      = 0
-        self._tp1_done      = set()
+        self.last_sig            = None
+        self.last_tick           = 0
+        self._tp1_done           = set()
+        self._sl_cooldown        = 0
+        self._daily_loss         = 0.0
+        self._daily_date         = None
+        self._known_tickets: set = set()   # tiket yang sudah kita catat OPEN
+        self._timeframe          = ""      # diisi dari luar agar log_entry ada TF
+        # Anti-overtrading state
+        self._last_trade_time    = 0.0     # epoch seconds saat terakhir trade masuk
+        self._last_sl_time       = 0.0     # epoch seconds saat terakhir kena SL
+        self._trades_this_hour   = []      # list epoch seconds trade dalam jam ini
+        self._trades_today       = 0       # counter trade hari ini
+        self._trades_today_date  = None    # tanggal counter di atas
 
     def should_trade(self, signal: dict, ml_pred: dict) -> bool:
         direction = signal.get("direction", "WAIT")
 
         if direction == "WAIT":
+            return False
+
+        # ══════════════════════════════════════════════════════════════════
+        # ANTI-OVERTRADING GUARDS (berlaku semua mode)
+        # ══════════════════════════════════════════════════════════════════
+        import time as _time
+        import datetime as _dt
+        from config import (TRADE_COOLDOWN_MIN, SL_COOLDOWN_MIN,
+                            MAX_TRADES_PER_HOUR, MAX_DAILY_TRADES)
+
+        now_ts   = _time.time()
+        now_date = _dt.date.today()
+
+        # ── Reset daily counter jika hari baru ────────────────────────────
+        if self._trades_today_date != now_date:
+            self._trades_today_date = now_date
+            self._trades_today      = 0
+
+        # ── Max trades per hari ───────────────────────────────────────────
+        if self._trades_today >= MAX_DAILY_TRADES:
+            print(f"  [GUARD] Trade hari ini: {self._trades_today}/{MAX_DAILY_TRADES} "
+                  f"— batas harian tercapai, berhenti sampai besok")
+            return False
+
+        # ── SL cooldown (lebih ketat setelah kena SL) ────────────────────
+        if self._last_sl_time > 0:
+            sl_elapsed_min = (now_ts - self._last_sl_time) / 60
+            if sl_elapsed_min < SL_COOLDOWN_MIN:
+                remaining = int(SL_COOLDOWN_MIN - sl_elapsed_min)
+                print(f"  [GUARD] SL Cooldown — tunggu {remaining} menit lagi "
+                      f"(SL terakhir {sl_elapsed_min:.0f} menit yang lalu)")
+                return False
+
+        # ── Trade cooldown (jeda minimum antar trade) ─────────────────────
+        if self._last_trade_time > 0:
+            elapsed_min = (now_ts - self._last_trade_time) / 60
+            if elapsed_min < TRADE_COOLDOWN_MIN:
+                remaining = int(TRADE_COOLDOWN_MIN - elapsed_min)
+                print(f"  [GUARD] Trade Cooldown — tunggu {remaining} menit lagi "
+                      f"(trade terakhir {elapsed_min:.0f} menit yang lalu)")
+                return False
+
+        # ── Max trades per jam ────────────────────────────────────────────
+        one_hour_ago = now_ts - 3600
+        self._trades_this_hour = [t for t in self._trades_this_hour
+                                  if t > one_hour_ago]
+        if len(self._trades_this_hour) >= MAX_TRADES_PER_HOUR:
+            print(f"  [GUARD] Max trade/jam tercapai: "
+                  f"{len(self._trades_this_hour)}/{MAX_TRADES_PER_HOUR} "
+                  f"dalam 60 menit terakhir")
+            return False
+
+        # ── Live open position check (langsung dari MT5, bukan cache) ─────
+        from config import MAX_OPEN_POSITIONS
+        live_positions = self.mt5.get_positions(self.symbol)
+        n_open = len(live_positions) if live_positions else 0
+        if n_open >= MAX_OPEN_POSITIONS:
+            print(f"  [GUARD] {n_open} posisi masih terbuka "
+                  f"(max {MAX_OPEN_POSITIONS}) — tidak buka baru")
             return False
 
         if self.strict_mode:
@@ -762,7 +1035,57 @@ class SignalExecutor:
             return True
 
         if self.real_mode:
-            from config import REAL_ML_CONF, REAL_MAX_STACK
+            from config import (REAL_ML_CONF, REAL_MAX_STACK,
+                                REAL_MAX_DAILY_LOSS, REAL_MAX_FLOATING_USD,
+                                REAL_SL_COOLDOWN)
+            import datetime as _dt
+
+            # ── Reset daily loss jika hari baru ──────────────────────────────
+            today = _dt.date.today()
+            if not hasattr(self, "_daily_date") or self._daily_date != today:
+                self._daily_date = today
+                self._daily_loss = 0.0
+
+            # ── Daily loss limit ─────────────────────────────────────────────
+            if hasattr(self, "_daily_loss") and self._daily_loss >= REAL_MAX_DAILY_LOSS:
+                print(f"  [REAL] STOP — rugi hari ini ${self._daily_loss:.2f} "
+                      f">= limit ${REAL_MAX_DAILY_LOSS:.0f}")
+                return False
+
+            # ── Cooldown setelah SL ──────────────────────────────────────────
+            if hasattr(self, "_sl_cooldown") and self._sl_cooldown > 0:
+                self._sl_cooldown -= 1
+                print(f"  [REAL] Cooldown setelah SL — tunggu {self._sl_cooldown} siklus lagi")
+                return False
+
+            # ── Floating loss ────────────────────────────────────────────────
+            all_pos     = self.mt5.get_all_positions(self.symbol)
+            total_float = sum(p.get("profit", 0) for p in all_pos)
+            if total_float <= -REAL_MAX_FLOATING_USD:
+                print(f"  [REAL] STOP — floating loss ${total_float:.2f} "
+                      f">= limit -${REAL_MAX_FLOATING_USD:.0f}")
+                return False
+
+            # ── Stacking limit ───────────────────────────────────────────────
+            same = [p for p in all_pos if p["direction"] == direction]
+            if len(same) >= REAL_MAX_STACK:
+                print(f"  [REAL] Sudah {len(same)} posisi {direction} — "
+                      f"batas {REAL_MAX_STACK}x tercapai")
+                return False
+
+            # ── ML check: SKIP jika rule-based sudah generate signal valid ───
+            # exec_source = "Rule-Based" → sinyal sudah melewati semua filter
+            # rule-based (ADX, momentum, konfirmasi, news driver dll)
+            # ML tetap dicek HANYA jika sinyal datang dari ML-only path
+            exec_source = signal.get("exec_source", "")
+            if exec_source and exec_source.startswith("Rule-Based"):
+                # Trust rule-based — tidak perlu ML setuju
+                if same:
+                    print(f"  [REAL] Posisi {direction}: {len(same)}/{REAL_MAX_STACK} — "
+                          f"sinyal Rule-Based, pasang lagi")
+                return True
+
+            # ML-only path: harus ML confident dan searah
             min_conf = self.ml_min_conf or REAL_ML_CONF
             if not ml_pred or ml_pred.get("direction") == "WAIT":
                 print(f"  [REAL] Trade dibatalkan — ML tidak ada prediksi")
@@ -776,13 +1099,8 @@ class SignalExecutor:
             if conf < min_conf:
                 print(f"  [REAL] Trade dibatalkan — ML confidence {conf}% < {min_conf}%")
                 return False
-            all_pos = self.mt5.get_all_positions(self.symbol)
-            if all_pos:
-                same = [p for p in all_pos if p["direction"] == direction]
-                if len(same) >= REAL_MAX_STACK:
-                    print(f"  [REAL] Sudah {len(same)} posisi {direction} — "
-                          f"batas tumpuk {REAL_MAX_STACK}x tercapai")
-                    return False
+
+            if same:
                 print(f"  [REAL] Posisi {direction}: {len(same)}/{REAL_MAX_STACK} — "
                       f"sinyal bagus, pasang lagi")
             return True
@@ -848,18 +1166,49 @@ class SignalExecutor:
         sig_score  = float(signal.get("score", 0))
         ml_conf    = float(ml_pred.get("confidence", 0)) if ml_pred else 0.0
 
+        # ── SL minimum enforcement (MIN_SL_PIPS) ─────────────────────────
+        from config import MIN_SL_PIPS
+        if sl and price and price > 0:
+            sl_pips_calc = abs(price - sl) / (si.get("point", 0.01) * 10 if si else 0.1)
+            if sl_pips_calc < MIN_SL_PIPS:
+                # Perlebar SL ke minimum
+                if direction == "BUY":
+                    sl = round(price - MIN_SL_PIPS * (si.get("point", 0.01) * 10 if si else 0.1), 5)
+                else:
+                    sl = round(price + MIN_SL_PIPS * (si.get("point", 0.01) * 10 if si else 0.1), 5)
+                print(f"  [GUARD] SL terlalu dekat ({sl_pips_calc:.1f} pip < {MIN_SL_PIPS}) "
+                      f"— diperlebar ke {sl:.5f}")
+
+        # ── Lot cap berdasarkan win rate 10 trade terakhir ───────────────
+        from config import MAX_LOT_SAFE, MAX_LOT_LOSING
+        _effective_max_lot = MAX_LOT_SAFE   # default safe cap
+        try:
+            from data.trade_journal import get_stats
+            _st = get_stats(self.symbol)
+            _recent_wr = _st.get("win_rate", 50) / 100.0
+            _total_cl  = _st.get("total", 0)
+            if _total_cl >= 5:
+                if _recent_wr < 0.35:
+                    _effective_max_lot = MAX_LOT_LOSING
+                    print(f"  [GUARD] Win rate {_recent_wr:.0%} < 35% — lot dikunci ke {MAX_LOT_LOSING}")
+                elif _recent_wr >= 0.50:
+                    _effective_max_lot = MAX_LOT_SAFE * 2   # boleh 2x cap kalau WR bagus
+        except Exception:
+            pass
+
         lot = self.fixed_lot
         if self.real_mode:
             from config import (REAL_AUTO_LOT, REAL_AUTO_LOT_MIN,
                                 REAL_AUTO_LOT_MAX, REAL_RISK_PCT)
             if REAL_AUTO_LOT:
+                _real_max = min(REAL_AUTO_LOT_MAX, _effective_max_lot)
                 if sl and price and sl != price:
                     # Step 1: hitung base lot dari risk
                     sl_pips  = abs(price - sl) / (si.get("point", 0.01) * 10)
                     base_lot = self.mt5.calculate_lot(
                         self.symbol, sl_pips, REAL_RISK_PCT
                     )
-                    base_lot = max(REAL_AUTO_LOT_MIN, min(REAL_AUTO_LOT_MAX, base_lot))
+                    base_lot = max(REAL_AUTO_LOT_MIN, min(_real_max, base_lot))
 
                     # Step 2: scale up berdasarkan kekuatan sinyal
                     lot = self.mt5.calculate_signal_lot(
@@ -868,18 +1217,18 @@ class SignalExecutor:
                         ml_confidence=ml_conf,
                         symbol_key=self.symbol,
                         min_lot=REAL_AUTO_LOT_MIN,
-                        max_lot=REAL_AUTO_LOT_MAX,
+                        max_lot=_real_max,
                     )
                 else:
                     # Tidak ada SL — pakai auto lot lalu scale
-                    base_lot = self.mt5.calculate_auto_lot(REAL_AUTO_LOT_MIN, REAL_AUTO_LOT_MAX)
+                    base_lot = self.mt5.calculate_auto_lot(REAL_AUTO_LOT_MIN, _real_max)
                     lot = self.mt5.calculate_signal_lot(
                         base_lot,
                         signal_score=sig_score,
                         ml_confidence=ml_conf,
                         symbol_key=self.symbol,
                         min_lot=REAL_AUTO_LOT_MIN,
-                        max_lot=REAL_AUTO_LOT_MAX,
+                        max_lot=_real_max,
                     )
 
         n = self.bulk_orders
@@ -959,6 +1308,8 @@ class SignalExecutor:
                         if res.get("success"):
                             print(f"  [STACK] #{pos['ticket']} SL disejajarkan → {sl:.5f}")
 
+        # Set timeframe agar log_entry bisa catat TF yang benar
+        self.mt5._journal_tf = getattr(self, "_timeframe", "")
         result = self.mt5.place_order(
             symbol_key=self.symbol,
             direction=direction,
@@ -968,6 +1319,16 @@ class SignalExecutor:
         )
         self.last_sig  = direction
         self.last_tick = time.time()
+
+        # Catat waktu trade untuk cooldown + daily counter
+        if result.get("success"):
+            _now_ts = time.time()
+            self._last_trade_time = _now_ts
+            self._trades_this_hour.append(_now_ts)
+            self._trades_today += 1
+            if result.get("ticket"):
+                self._known_tickets.add(result["ticket"])
+
         return result
 
     def sync_manual_positions(self, signal: dict) -> None:
@@ -1239,6 +1600,211 @@ class SignalExecutor:
                       f"— {ratio*100:.0f}% sisa jarak ke SL "
                       f"| harga: {current_price:.5f}  SL: {sl:.5f} "
                       f"| P&L: ${pnl:+.2f}{RESET}")
+
+    def sync_closed_positions(self) -> list[dict]:
+        """
+        Deteksi posisi bot yang sudah ditutup (SL/TP kena di MT5) dan:
+        - Catat ke journal CSV (log_exit)
+        - Update tabel trades di DB (close_trade_in_db)
+        Dipanggil setiap cycle sebelum print_stats.
+        Mengembalikan list dict posisi yang baru saja ditutup.
+        """
+        if not self.mt5.connected:
+            return []
+
+        current_open = {p["ticket"] for p in self.mt5.get_positions(self.symbol)}
+
+        # Perbarui _known_tickets dengan posisi yang masih buka
+        just_opened  = current_open - self._known_tickets
+        just_closed  = self._known_tickets - current_open
+
+        # Tambahkan yang baru dibuka ke tracking
+        self._known_tickets |= current_open
+        # Hapus yang sudah tutup dari tracking
+        self._known_tickets -= just_closed
+
+        import datetime as dt
+        from data.trade_journal import log_exit, is_open
+        try:
+            from services.db_logger import close_trade_in_db
+        except Exception:
+            close_trade_in_db = None
+
+        # ── Stale OPEN records: tickets in journal/DB but not in MT5 anymore ──
+        # Catches positions closed in previous bot sessions
+        try:
+            import pandas as pd
+            from data.trade_journal import JOURNAL_PATH
+            if os.path.exists(JOURNAL_PATH):
+                df_j = pd.read_csv(JOURNAL_PATH, dtype=str)
+                open_in_journal = set(
+                    int(t) for t in df_j.loc[df_j["result"] == "OPEN", "ticket"].dropna()
+                    if str(t).isdigit()
+                )
+                stale = open_in_journal - current_open
+                just_closed |= stale
+        except Exception:
+            pass
+
+        if not just_closed:
+            return []
+
+        closed_deals = []
+        try:
+            from_date = dt.datetime.now() - dt.timedelta(days=7)
+            deals     = mt5.history_deals_get(from_date, dt.datetime.now()) or []
+            # Kumpulkan close deal per POSITION ticket (position_id)
+            for d in deals:
+                if d.entry == 1:   # entry=1 = OUT (close deal)
+                    closed_deals.append({
+                        "position_id": getattr(d, "position_id", 0),
+                        "order":       d.order,
+                        "price":       d.price,
+                        "profit":      d.profit,
+                        "swap":        getattr(d, "swap", 0.0),
+                        "fee":         getattr(d, "fee", 0.0),
+                        "comment":     getattr(d, "comment", ""),
+                    })
+        except Exception:
+            pass
+
+        # Map POSITION ticket → close deal (ambil yang paling akhir)
+        # Pakai position_id bukan order — position_id cocok dengan tiket posisi yang kita track
+        close_map: dict[int, dict] = {}
+        for d in closed_deals:
+            pid = int(d["position_id"])
+            close_map[pid] = d   # overwrite = ambil deal terbaru jika ada 2+
+
+        results = []
+        for ticket in just_closed:
+            deal = close_map.get(int(ticket))
+
+            if deal is not None:
+                price  = float(deal.get("price", 0.0))
+                # profit = P&L + swap + fee (net P&L sebenarnya)
+                pnl    = float(deal.get("profit", 0.0)) \
+                       + float(deal.get("swap", 0.0)) \
+                       + float(deal.get("fee", 0.0))
+                note   = deal.get("comment", "") or ("sl" if pnl < 0 else "tp")
+            else:
+                # Deal tidak ditemukan di history — fallback: ambil dari MT5 order history
+                price, pnl, note = 0.0, 0.0, "auto-close"
+                try:
+                    orders = mt5.history_orders_get(
+                        position=int(ticket)) or []
+                    if orders:
+                        last_o = orders[-1]
+                        price  = float(getattr(last_o, "price_current", 0.0))
+                except Exception:
+                    pass
+
+            result = "WIN" if pnl > 0 else ("LOSS" if pnl < 0 else "MANUAL")
+
+            # ── Catat SL time untuk cooldown ─────────────────────────────────
+            is_sl_hit = (pnl < 0 and ("sl" in note.lower() or note == "auto-close"))
+            if is_sl_hit:
+                self._last_sl_time  = time.time()
+                self._last_trade_time = time.time()   # reset trade cooldown juga
+                # Update daily loss
+                if not hasattr(self, "_daily_loss"):
+                    self._daily_loss = 0.0
+                self._daily_loss += abs(pnl)
+
+            # Update CSV journal
+            try:
+                if is_open(ticket):
+                    log_exit(self.symbol, self._timeframe, ticket, price, pnl, note=note)
+            except Exception:
+                pass
+
+            # Update DB
+            try:
+                if close_trade_in_db:
+                    close_trade_in_db(ticket, price, pnl, result, note)
+            except Exception:
+                pass
+
+            GREEN = "\033[92m"
+            RED   = "\033[91m"
+            BOLD  = "\033[1m"
+            RESET = "\033[0m"
+            rc    = GREEN if result == "WIN" else RED
+            print(f"  [Journal] #{ticket} {self.symbol} ditutup -> "
+                  f"{rc}{BOLD}{result}{RESET}  P&L: {rc}${pnl:+.2f}{RESET}  "
+                  f"@ {price:.2f}  ({note})")
+
+            # ── Adaptive Learning: belajar dari hasil trade ini ──────────────
+            try:
+                from ml.adaptive import get_learner
+                learner = get_learner()
+
+                # Ambil metadata trade dari journal (source, score, direction)
+                src_str   = ""
+                sig_score = 0.0
+                direction = ""
+                ind_snap  = {}
+                try:
+                    import pandas as _pd
+                    from data.trade_journal import JOURNAL_PATH
+                    if os.path.exists(JOURNAL_PATH):
+                        _df_j = _pd.read_csv(JOURNAL_PATH, dtype=str)
+                        _row  = _df_j[_df_j["ticket"] == str(ticket)]
+                        if not _row.empty:
+                            r = _row.iloc[0]
+                            direction = str(r.get("direction", ""))
+                            src_str   = str(r.get("source", ""))
+                            try:
+                                sig_score = float(r.get("score", 0) or 0)
+                            except Exception:
+                                sig_score = 0.0
+
+                        # Ambil snapshot indikator dari candle log
+                        from data.candle_log import LOG_DIR
+                        cl_path = os.path.join(
+                            LOG_DIR, f"candles_{self.symbol}_{getattr(self, '_timeframe', '5m')}.csv")
+                        if os.path.exists(cl_path):
+                            _cl = _pd.read_csv(cl_path, dtype=str)
+                            entry_time = str(r.get("entry_time", ""))[:16]
+                            _cl_row = _cl[_cl["time"].str[:16] == entry_time]
+                            if not _cl_row.empty:
+                                cr = _cl_row.iloc[0]
+                                # Buat snapshot boolean: apakah indikator bullish saat entry?
+                                try:
+                                    rsi_v = float(cr.get("rsi", 50) or 50)
+                                    ind_snap["rsi"] = rsi_v > 50
+                                except Exception: pass
+                                try:
+                                    hist_v = float(cr.get("histogram", 0) or 0)
+                                    ind_snap["macd"] = hist_v > 0
+                                except Exception: pass
+                                try:
+                                    sig_dir = str(cr.get("signal", ""))
+                                    ind_snap["signal_buy"] = sig_dir == "BUY"
+                                except Exception: pass
+                                try:
+                                    td = str(cr.get("tick_dir", "") or "")
+                                    if td:
+                                        ind_snap["tick"] = td == "BUY"
+                                except Exception: pass
+                except Exception:
+                    pass
+
+                learner.record_trade_outcome(
+                    ticket       = int(ticket),
+                    result       = result,
+                    pnl          = pnl,
+                    direction    = direction or "BUY",
+                    source       = src_str or "#unknown",
+                    signal_score = sig_score,
+                    indicator_snapshot = ind_snap if ind_snap else None,
+                )
+            except Exception:
+                pass
+
+            results.append({"ticket": ticket, "result": result, "pnl": pnl,
+                             "price": price, "note": note})
+
+        return results
 
     def manage_positions(self, signal: dict, df=None) -> None:
         direction = signal.get("direction", "WAIT")

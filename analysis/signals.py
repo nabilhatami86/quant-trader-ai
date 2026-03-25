@@ -1,3 +1,56 @@
+"""
+analysis/signals.py — Decision engine: scoring indikator → sinyal BUY/SELL/WAIT.
+
+Fungsi utama:
+  generate_signal(df, news_bias, news_risk, candle_memory) → dict signal
+
+Arsitektur Decision Engine (7 lapisan):
+
+  1. Market State Detection
+       ADX >= ADX_TREND_MIN(25) → TREND mode (sinyal tren)
+       ADX <  20                → RANGE mode (sinyal reversal)
+       Di antaranya             → UNCLEAR (filter ketat)
+
+  2. Score Calculation (per kelompok)
+       Traditional : RSI, MACD, EMA cross, BB, Stoch, ADX, Candle pattern
+       Volume      : OBV, VWAP, Williams %R, CCI, Volume spike
+       SMC         : FVG, Order Block, BOS/ChoCH, Liquidity Sweep
+       Structure   : RSI Divergence, Momentum Chain (HH/HL)
+       Trend       : Supertrend, Ichimoku, PSAR, MFI, Fibonacci, SMA cross
+       News        : Economic calendar bias (dari NewsFilter)
+       Memory      : Akurasi pola candle serupa (dari CandleLog)
+
+  3. EMA Short-Trend Dampening
+       EMA20 > EMA50 (uptrend) + MACD bearish → dampen MACD 70%, RSI 60%
+       EMA20 < EMA50 (downtrend) + MACD bullish → idem
+       Tujuan: kurangi false SELL/BUY saat market hanya koreksi, bukan reversal
+
+  4. Hard Filters (masing-masing bisa batalkan sinyal → WAIT)
+       - Candle confirmation: candle terakhir harus sesuai arah sinyal
+       - RSI momentum filter: RSI harus menunjukkan momentum yang benar
+       - Pullback filter: harga tidak terlalu jauh dari EMA20
+       - No-trade zone: terlalu dekat support/resistance (ATR * NO_TRADE_ZONE_PCT)
+       - News HIGH block: ada berita high-impact → NO TRADE
+       - Quality score < MIN_QUALITY_SCORE (min 4/6 poin)
+
+  5. Counter-Trend Gate
+       Signal melawan EMA20/50 short trend → butuh score 2x MIN_SIGNAL_SCORE (6.0)
+       Tujuan: hanya masuk counter-trend jika signal SANGAT kuat
+
+  6. Session Bias (GUARD-HTF-Bias)
+       Bias HTF (H4+Daily) score >= 3.0 dan signal M5 berlawanan → WAIT
+       Bias dibaca dari data/session_bias_state.json (diupdate tiap session close)
+
+  7. TP/SL Calculation
+       AUTO_TP_SL=False : SL=1xATR, TP=10xATR (RR 1:10)
+       AUTO_TP_SL=True  : swing high/low terdekat, min RR=MIN_RR_RATIO
+
+Output dict keys:
+  direction, score, confidence, market_state, sl, tp, rr_ratio,
+  method_sl, method_tp, reasons, filters, close, atr,
+  score_technical, score_volume, score_smc, score_structure, score_news
+"""
+
 import pandas as pd
 import numpy as np
 from config import *
@@ -644,107 +697,399 @@ def score_momentum_chain(row: pd.Series) -> tuple[float, str]:
 
 
 # ─────────────────────────────────────────────
+# NEW: SUPERTREND SCORING
+# ─────────────────────────────────────────────
+
+def score_supertrend(row: pd.Series) -> tuple[float, str]:
+    """
+    Supertrend ATR-based BUY/SELL.
+    Flip (sinyal baru) mendapat bobot penuh; sinyal berkelanjutan 0.6x.
+    """
+    w    = WEIGHTS.get("supertrend", 2.5)
+    d    = int(row.get("supertrend_dir",  0))
+    flip = int(row.get("supertrend_flip", 0))
+
+    if flip == 1:
+        return w,        "Supertrend FLIP → BUY (trend baru naik!)"
+    elif flip == -1:
+        return -w,       "Supertrend FLIP → SELL (trend baru turun!)"
+    elif d == 1:
+        return w * 0.6,  "Supertrend BUY (trend naik berlanjut)"
+    elif d == -1:
+        return -w * 0.6, "Supertrend SELL (trend turun berlanjut)"
+    return 0, "Supertrend N/A"
+
+
+# ─────────────────────────────────────────────
+# NEW: MFI SCORING
+# ─────────────────────────────────────────────
+
+def score_mfi(row: pd.Series) -> tuple[float, str]:
+    """
+    Money Flow Index — volume-weighted RSI.
+    < 20 oversold (BUY), > 80 overbought (SELL).
+    Lebih akurat dari RSI karena mempertimbangkan volume.
+    """
+    mfi = float(row.get("mfi", 50))
+    w   = WEIGHTS.get("mfi", 1.5)
+    if mfi <= 20:
+        return w,         f"MFI Oversold {mfi:.1f} — volume bearish habis (BUY)"
+    elif mfi >= 80:
+        return -w,        f"MFI Overbought {mfi:.1f} — volume bullish habis (SELL)"
+    elif mfi <= 35:
+        return w * 0.5,   f"MFI Near Oversold {mfi:.1f}"
+    elif mfi >= 65:
+        return -w * 0.5,  f"MFI Near Overbought {mfi:.1f}"
+    return 0, f"MFI Neutral {mfi:.1f}"
+
+
+# ─────────────────────────────────────────────
+# NEW: PARABOLIC SAR SCORING
+# ─────────────────────────────────────────────
+
+def score_psar(row: pd.Series, close: float) -> tuple[float, str]:
+    """
+    Parabolic SAR:
+    - SAR di bawah harga (psar_dir=1) → BUY
+    - SAR di atas  harga (psar_dir=-1) → SELL
+    """
+    d    = int(row.get("psar_dir", 0))
+    psar = float(row.get("psar", close))
+    w    = WEIGHTS.get("psar", 1.5)
+    dist_pct = abs(close - psar) / close * 100 if close > 0 else 0
+
+    if d == 1:
+        return w, f"PSAR BUY — SAR {psar:.2f} di bawah harga ({dist_pct:.2f}% jarak)"
+    elif d == -1:
+        return -w, f"PSAR SELL — SAR {psar:.2f} di atas harga ({dist_pct:.2f}% jarak)"
+    return 0, "PSAR N/A"
+
+
+# ─────────────────────────────────────────────
+# NEW: ICHIMOKU SCORING
+# ─────────────────────────────────────────────
+
+def score_ichimoku(row: pd.Series, close: float) -> tuple[float, str]:
+    """
+    Ichimoku Cloud composite score:
+    - Posisi harga vs cloud (atas cloud = bullish, bawah = bearish)
+    - Tenkan vs Kijun cross
+    - Warna cloud (green = bullish zone, red = bearish zone)
+    Sinyal paling kuat: harga di atas green cloud + TK cross bullish
+    """
+    w         = WEIGHTS.get("ichimoku", 2.5)
+    tenkan    = float(row.get("ichi_tenkan",    close))
+    kijun     = float(row.get("ichi_kijun",     close))
+    cloud_top = float(row.get("ichi_cloud_top", close))
+    cloud_bot = float(row.get("ichi_cloud_bot", close))
+    cloud_bull = int(row.get("ichi_cloud_bull",  0))
+    tk_bull   = int(row.get("ichi_tk_bull",     0))
+    tk_bear   = int(row.get("ichi_tk_bear",     0))
+
+    score = 0.0
+    parts = []
+
+    # 1. Posisi harga vs cloud
+    above_cloud = close > cloud_top
+    below_cloud = close < cloud_bot
+    in_cloud    = not above_cloud and not below_cloud
+
+    if above_cloud:
+        score += w * 0.4
+        parts.append(f"Harga ATAS cloud {'hijau' if cloud_bull else 'merah'}")
+    elif below_cloud:
+        score -= w * 0.4
+        parts.append(f"Harga BAWAH cloud {'merah' if not cloud_bull else 'hijau'}")
+    else:
+        parts.append("Harga di DALAM cloud (sideways)")
+
+    # 2. Cloud color — konfirmasi trend
+    if cloud_bull and above_cloud:
+        score += w * 0.2
+        parts.append("Cloud hijau (bullish trend)")
+    elif not cloud_bull and below_cloud:
+        score -= w * 0.2
+        parts.append("Cloud merah (bearish trend)")
+
+    # 3. Tenkan vs Kijun (posisi saat ini)
+    if tenkan > kijun:
+        score += w * 0.25
+        parts.append(f"Tenkan {tenkan:.2f} > Kijun {kijun:.2f} (bullish)")
+    elif tenkan < kijun:
+        score -= w * 0.25
+        parts.append(f"Tenkan {tenkan:.2f} < Kijun {kijun:.2f} (bearish)")
+
+    # 4. TK Cross (sinyal terkuat — hanya 1 candle)
+    if tk_bull:
+        score += w * 0.4
+        parts.append("Tenkan CROSS UP Kijun — sinyal BUY!")
+    elif tk_bear:
+        score -= w * 0.4
+        parts.append("Tenkan CROSS DOWN Kijun — sinyal SELL!")
+
+    desc = " | ".join(parts) if parts else "Ichimoku Neutral"
+    return round(score, 3), desc
+
+
+# ─────────────────────────────────────────────
 # REGIME-AWARE DECISION ENGINE
 # ─────────────────────────────────────────────
+
+def _check_strong_candle(df: pd.DataFrame, row: pd.Series,
+                          direction: str) -> tuple[bool, str]:
+    """
+    Validates price-action candle patterns.
+    Required: engulfing, pin bar (rejection), or strong momentum candle.
+    No valid pattern = NO TRADE.
+    """
+    close      = float(row.get("Close", 0))
+    open_      = float(row.get("Open",  0))
+    high       = float(row.get("High",  0))
+    low        = float(row.get("Low",   0))
+    full_range = (high - low) or 0.0001
+    body       = abs(close - open_)
+    wick_up    = high - max(open_, close)
+    wick_down  = min(open_, close) - low
+    body_ratio = body / full_range
+
+    # 1. Extra multi-candle patterns (Three Soldiers / Morning Star etc.)
+    ex_pat = int(row.get("candle_ex", 0))
+    if direction == "BUY" and ex_pat >= 1:
+        return True, f"Multi-candle bullish pattern ✓"
+    if direction == "SELL" and ex_pat <= -1:
+        return True, f"Multi-candle bearish pattern ✓"
+
+    # 2. Engulfing
+    if len(df) >= 2:
+        prev = df.iloc[-2]
+        pc   = float(prev.get("Close", close))
+        po   = float(prev.get("Open",  close))
+        if direction == "BUY" and pc < po:          # prev bearish
+            if close > po and open_ < pc:           # fully engulf
+                return True, "Bullish Engulfing ✓"
+        if direction == "SELL" and pc > po:         # prev bullish
+            if close < po and open_ > pc:           # fully engulf
+                return True, "Bearish Engulfing ✓"
+
+    # 3. Pin Bar (rejection wick ≥ 60% of range, small body ≤ 30%)
+    if direction == "BUY" and wick_down / full_range >= 0.60 and body_ratio <= 0.30:
+        return True, f"Bullish Pin Bar (wick_dn {wick_down/full_range:.0%}) ✓"
+    if direction == "SELL" and wick_up / full_range >= 0.60 and body_ratio <= 0.30:
+        return True, f"Bearish Pin Bar (wick_up {wick_up/full_range:.0%}) ✓"
+
+    # 4. Strong momentum candle / breakout candle (body ≥ 60%, closes on correct side)
+    if direction == "BUY" and close > open_ and body_ratio >= 0.60:
+        return True, f"Strong Bullish Candle (body {body_ratio:.0%}) ✓"
+    if direction == "SELL" and close < open_ and body_ratio >= 0.60:
+        return True, f"Strong Bearish Candle (body {body_ratio:.0%}) ✓"
+
+    # 5. SMC liquidity sweep / ChoCH — pattern override
+    liq_ok = (direction == "BUY"  and int(row.get("liq_bull_sweep", 0))) or \
+             (direction == "SELL" and int(row.get("liq_bear_sweep", 0)))
+    choch_ok = (direction == "BUY"  and int(row.get("choch_bull", 0))) or \
+               (direction == "SELL" and int(row.get("choch_bear", 0)))
+    if liq_ok:
+        return True, "SMC Liquidity Sweep — pattern override ✓"
+    if choch_ok:
+        return True, "SMC ChoCH — structure flip override ✓"
+
+    dir_lbl = "bullish" if direction == "BUY" else "bearish"
+    return False, f"No valid {dir_lbl} pattern (need engulfing/pin-bar/strong-body)"
+
 
 def _make_decision(df: pd.DataFrame, row: pd.Series, close: float,
                    news_bias: dict | None,
                    news_risk: str = "LOW") -> tuple[str, list, float, dict]:
-    reasons  = []
-    filters  = {}
-    ema20    = float(row.get(f"ema_{EMA_SLOW}", close))
-    ema50    = float(row.get(f"ema_{EMA_TREND}", close))
-    rsi      = float(row.get("rsi", 50))
-    adx      = float(row.get("adx", 0))
-    regime   = str(row.get("regime", "RANGE"))
-    trending = adx >= ADX_TREND_MIN
-
-    ema_bull = ema20 > ema50
-    ema_bear = ema20 < ema50
-
-    candle_trend, candle_reason = _read_candle_trend(df, lookback=5)
-
-    trend_str = "UP" if ema_bull else ("DOWN" if ema_bear else "FLAT")
-    filters["regime"]  = f"{regime}  ADX={adx:.1f}  Trend={trend_str}"
-    filters["candle_trend"] = candle_reason
-
-    # SMC signals — bisa override ADX sideways jika ChoCH/Liquidity sweep
-    choch_bull  = int(row.get("choch_bull", 0))
-    choch_bear  = int(row.get("choch_bear", 0))
-    liq_bull    = int(row.get("liq_bull_sweep", 0))
-    liq_bear    = int(row.get("liq_bear_sweep", 0))
-    smc_force   = choch_bull or choch_bear or liq_bull or liq_bear
-    smc_dir     = "BUY" if (choch_bull or liq_bull) else ("SELL" if (choch_bear or liq_bear) else None)
-
+    """
+    Hard-filter decision pipeline.
+    Behaves like a disciplined professional trader:
+    - Prefer WAIT over forced trades
+    - Never trade without multiple confirmations
+    - All filters are mandatory (no soft overrides)
+    """
+    reasons           = []
+    filters           = {}
     news_contribution = 0.0
+
+    # ── Core indicator values ─────────────────────────────────────────
+    ema20  = float(row.get(f"ema_{EMA_SLOW}",   close))
+    ema50  = float(row.get(f"ema_{EMA_TREND}",  close))
+    ema200 = float(row.get(f"ema_{EMA_LONG}",   close))
+    rsi    = float(row.get("rsi", 50))
+    adx    = float(row.get("adx",  0))
+    atr    = float(row.get("atr",  close * 0.001))
+
+    # SMC structural events (strongest override)
+    choch_bull = int(row.get("choch_bull",      0))
+    choch_bear = int(row.get("choch_bear",      0))
+    liq_bull   = int(row.get("liq_bull_sweep",  0))
+    liq_bear   = int(row.get("liq_bear_sweep",  0))
+    smc_force  = choch_bull or choch_bear or liq_bull or liq_bear
+    smc_dir    = ("BUY"  if (choch_bull or liq_bull)  else
+                  "SELL" if (choch_bear or liq_bear)  else None)
+
+    # News pre-compute
+    _nb_bias  = (news_bias or {}).get("bias", "NEUTRAL")
+    _nb_score = abs((news_bias or {}).get("score", 0.0))
+    _nb_conf  = (news_bias or {}).get("confidence", "LOW")
+    _news_dir = ("BUY"  if _nb_bias == "BULLISH" else
+                 "SELL" if _nb_bias == "BEARISH"  else None)
     if news_bias:
-        n_score    = news_bias.get("score", 0.0)
-        confidence = news_bias.get("confidence", "LOW")
-        weight     = {"HIGH": 0.30, "MEDIUM": 0.20, "LOW": 0.10}.get(confidence, 0.10)
-        news_contribution = n_score * weight
-        d_word = "BULLISH" if n_score > 0 else "BEARISH" if n_score < 0 else "NEUTRAL"
-        reasons.append((news_contribution, f"News Bias {d_word} (score {n_score:+.1f}, conf:{confidence})"))
+        reasons.append((0, f"News Bias {_nb_bias} ({news_bias.get('score', 0):+.1f}) [hint]"))
 
-    # ── 1. Trend + ADX filter (SMC bisa override jika sideways) ──────
-    if not trending and not smc_force:
-        filters["momentum"] = f"SKIP — ADX {adx:.1f} sideways, no SMC trigger"
-        filters["pullback"] = "SKIP"
-        filters["confirmation"] = "SKIP"
-        reasons.append((0, f"ADX {adx:.1f} < {ADX_TREND_MIN} — market sideways"))
-        return "WAIT", reasons, news_contribution, filters
-
-    if not trending and smc_force:
-        # ADX lemah tapi ada SMC signal kuat — masih bisa trade
-        filters["momentum"] = f"ADX {adx:.1f} weak, tapi SMC override ({smc_dir})"
-        raw_dir = smc_dir
-        reasons.append((0, f"SMC override ADX lemah → arah {raw_dir}"))
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 1 — Market State (TREND / UNCLEAR / RANGE)
+    # Only trade in clear TREND; RANGE and UNCLEAR = NO TRADE
+    # Exception: strong SMC event can still trigger in UNCLEAR
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if adx >= ADX_TREND_MIN:          # 25+
+        market_state = "TREND"
+    elif adx >= 20:
+        market_state = "UNCLEAR"
     else:
-        if not (ema_bull or ema_bear):
-            filters["momentum"] = "SKIP — EMA flat"
-            filters["pullback"] = "SKIP"
-            filters["confirmation"] = "SKIP"
+        market_state = "RANGE"
+
+    filters["market_state"] = f"{market_state}  ADX={adx:.1f}"
+
+    if market_state == "RANGE":
+        filters["market_state"] += " → NO TRADE"
+        reasons.append((0, f"Market RANGE (ADX {adx:.1f} < 20) — skip"))
+        return "WAIT", reasons, news_contribution, filters
+
+    if market_state == "UNCLEAR" and not smc_force:
+        filters["market_state"] += " → NO TRADE (no SMC)"
+        reasons.append((0, f"Market UNCLEAR (ADX {adx:.1f}) — terlalu lemah, no SMC"))
+        return "WAIT", reasons, news_contribution, filters
+
+    filters["market_state"] += " ✓" if market_state == "TREND" else " (SMC override)"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 2 — Trend Direction (EMA50 vs EMA200 = macro trend)
+    # Counter-trend trades are FORBIDDEN
+    # ChoCH can override (genuine structure flip)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if ema50 > ema200 * 1.0001:
+        macro_trend = "BUY"
+    elif ema50 < ema200 * 0.9999:
+        macro_trend = "SELL"
+    else:
+        macro_trend = None   # EMA50/200 flat
+
+    # ChoCH overrides macro trend (institutional structure flip)
+    if choch_bull:
+        macro_trend = "BUY"
+    elif choch_bear:
+        macro_trend = "SELL"
+
+    if macro_trend is None:
+        filters["trend"] = f"FLAT — EMA50={ema50:.2f} ≈ EMA200={ema200:.2f} → NO TRADE"
+        reasons.append((0, "Macro trend flat (EMA50≈EMA200) — tidak ada arah dominan"))
+        return "WAIT", reasons, news_contribution, filters
+
+    # Short-term direction (EMA20 vs EMA50) confirms entry timing
+    short_trend = "BUY" if ema20 > ema50 else "SELL" if ema20 < ema50 else macro_trend
+
+    # SMC liquidity sweep can trade against macro when very strong
+    if smc_force and smc_dir:
+        raw_dir = smc_dir
+        if smc_dir != macro_trend:
+            filters["trend"] = (f"Counter-macro {smc_dir} vs macro {macro_trend} "
+                                f"— SMC override (liq.sweep/ChoCH)")
+            reasons.append((0, f"SMC {smc_dir} override macro {macro_trend}"))
+        else:
+            filters["trend"] = f"Macro {macro_trend} + SMC {smc_dir} aligned ✓"
+    else:
+        # No SMC: must align with BOTH macro and short trend
+        if short_trend != macro_trend:
+            filters["trend"] = (f"COUNTER-TREND — short={short_trend} vs macro={macro_trend}"
+                                f" → NO TRADE")
+            reasons.append((0, f"Short trend {short_trend} berlawanan macro {macro_trend} — blok"))
             return "WAIT", reasons, news_contribution, filters
-        raw_dir = "BUY" if ema_bull else "SELL"
-        reasons.append((0, f"Trend {trend_str} → arah awal: {raw_dir}"))
+        raw_dir = macro_trend
+        filters["trend"] = f"Trend {raw_dir} — EMA20/50/200 aligned ✓"
 
-    # Jika SMC force direction berbeda dari EMA trend → ikut SMC (ChoCH = trend change)
-    if smc_force and smc_dir and smc_dir != raw_dir:
-        if choch_bull or choch_bear:
-            raw_dir = smc_dir
-            reasons.append((0, f"ChoCH override EMA trend → {raw_dir}"))
+    reasons.append((0, f"Trend {raw_dir} → arah dikonfirmasi"))
 
-    # ── 2. News HIGH → block ──────────────────────────────────────────
-    if news_risk == "HIGH":
-        filters["news"]         = "HIGH RISK — NO TRADE"
-        filters["momentum"]     = "SKIP"
-        filters["pullback"]     = "SKIP"
-        filters["confirmation"] = "SKIP"
-        reasons.append((0, "News HIGH impact — entry dilarang"))
-        return "WAIT", reasons, news_contribution, filters
-    filters["news"] = f"{news_risk} — OK"
-
-    # ── 3. RSI momentum ───────────────────────────────────────────────
-    ok, msg = _check_rsi_momentum(df, row, raw_dir)
-    filters["momentum"] = msg
-    if not ok:
-        reasons.append((0, f"Momentum: {msg}"))
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 3 — News
+    # HIGH impact = NO TRADE (unpredictable volatility)
+    # News bias opposing trend = NO TRADE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if news_risk == "HIGH" and NEWS_HIGH_BLOCK:
+        filters["news"] = "HIGH impact news → NO TRADE"
+        reasons.append((-1.0, "News HIGH — entry dilarang (terlalu volatile)"))
         return "WAIT", reasons, news_contribution, filters
 
-    # ── 4. Pullback ───────────────────────────────────────────────────
-    ok, msg = _check_pullback(row, raw_dir)
-    filters["pullback"] = msg
-    if not ok:
-        reasons.append((0, f"Pullback: {msg}"))
+    if _nb_bias != "NEUTRAL" and _nb_score >= 2:
+        if _news_dir and _news_dir != raw_dir:
+            filters["news"] = f"News {_nb_bias} berlawanan trend {raw_dir} → NO TRADE"
+            reasons.append((0, f"News {_nb_bias} berlawanan {raw_dir} — blok"))
+            return "WAIT", reasons, news_contribution, filters
+        if _news_dir == raw_dir:
+            boost = {"HIGH": 1.5, "MEDIUM": 1.0, "LOW": 0.5}.get(_nb_conf, 0.5)
+            news_contribution = boost
+            filters["news"]   = f"News {_nb_bias} searah {raw_dir} → +{boost:.1f} ✓"
+            reasons.append((boost, f"News {_nb_bias} searah {raw_dir} → +{boost:.1f}"))
+        else:
+            filters["news"] = f"{news_risk} neutral — OK"
+    else:
+        filters["news"] = f"{news_risk} — OK"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 4 — RSI Momentum
+    # BUY only if RSI > 50 (upward momentum confirmed)
+    # SELL only if RSI < 50 (downward momentum confirmed)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    rsi_aligned = (raw_dir == "BUY" and rsi > 50) or (raw_dir == "SELL" and rsi < 50)
+    liq_rsi_override = (raw_dir == "BUY" and liq_bull) or (raw_dir == "SELL" and liq_bear)
+
+    if not rsi_aligned and not liq_rsi_override:
+        filters["momentum"] = (f"RSI {rsi:.1f} — "
+                               f"{'< 50 (need >50 for BUY)' if raw_dir == 'BUY' else '> 50 (need <50 for SELL)'}"
+                               f" → NO TRADE")
+        reasons.append((0, f"RSI {rsi:.1f} tidak mendukung {raw_dir}"))
         return "WAIT", reasons, news_contribution, filters
 
-    # ── 5. Candle confirmation ────────────────────────────────────────
-    ok, msg = _check_confirmation(df, row, raw_dir)
-    filters["confirmation"] = msg
-    if not ok:
-        reasons.append((0, f"Konfirmasi: {msg}"))
-        return "WAIT", reasons, news_contribution, filters
+    if liq_rsi_override and not rsi_aligned:
+        filters["momentum"] = f"RSI {rsi:.1f} — Liq.Sweep override ✓"
+    else:
+        filters["momentum"] = f"RSI {rsi:.1f} ({'> 50' if raw_dir == 'BUY' else '< 50'}) ✓"
 
-    reasons.append((+1 if raw_dir == "BUY" else -1, f"Semua filter passed → {raw_dir}"))
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 5 — Candle Pattern (price action confirmation)
+    # Must have: engulfing, pin bar, strong body, or SMC event
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ok_candle, candle_msg = _check_strong_candle(df, row, raw_dir)
+    filters["candle_pattern"] = candle_msg
+    if not ok_candle:
+        reasons.append((0, f"No valid candle: {candle_msg}"))
+        return "WAIT", reasons, news_contribution, filters
+    reasons.append((+1 if raw_dir == "BUY" else -1, f"Candle: {candle_msg}"))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 6 — No Trade Zone (near key S/R levels)
+    # BUY near resistance = bad risk/reward → NO TRADE
+    # SELL near support   = bad risk/reward → NO TRADE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _zone_tol = atr * NO_TRADE_ZONE_PCT
+    _res, _sup = _find_swing_levels(df, lookback=80, pivot_window=4)
+    if raw_dir == "BUY" and _res:
+        too_close = [r for r in _res if 0 < r - close <= _zone_tol]
+        if too_close:
+            filters["no_trade_zone"] = (f"NO TRADE — BUY terlalu dekat resistance "
+                                        f"{too_close[0]:.2f} (dist {too_close[0]-close:.2f})")
+            reasons.append((0, f"No Trade Zone: BUY dekat resistance {too_close[0]:.2f}"))
+            return "WAIT", reasons, news_contribution, filters
+    elif raw_dir == "SELL" and _sup:
+        too_close = [s for s in _sup if 0 < close - s <= _zone_tol]
+        if too_close:
+            filters["no_trade_zone"] = (f"NO TRADE — SELL terlalu dekat support "
+                                        f"{too_close[0]:.2f} (dist {close-too_close[0]:.2f})")
+            reasons.append((0, f"No Trade Zone: SELL dekat support {too_close[0]:.2f}"))
+            return "WAIT", reasons, news_contribution, filters
+    filters["no_trade_zone"] = "OK — level jelas ✓"
+
+    reasons.append((+1 if raw_dir == "BUY" else -1, f"Semua hard-filter passed → {raw_dir}"))
     return raw_dir, reasons, news_contribution, filters
 
 
@@ -765,6 +1110,9 @@ def generate_signal(df: pd.DataFrame,
 
     direction, reasons, news_contribution, filters = \
         _make_decision(df, row, close, news_bias, news_risk)
+
+    confidence   = 0   # will be filled in confidence scoring block below
+    conf_notes   = []
 
     # ── Candle memory bias ─────────────────────────────────────────────
     memory_contribution = 0.0
@@ -814,6 +1162,12 @@ def generate_signal(df: pd.DataFrame,
     s_rdiv, d_rdiv = score_rsi_divergence(row)
     s_mch,  d_mch  = score_momentum_chain(row)
 
+    # ── New: Supertrend + MFI + PSAR + Ichimoku ───────────────────────
+    s_st,   d_st   = score_supertrend(row)
+    s_mfi,  d_mfi  = score_mfi(row)
+    s_psar, d_psar = score_psar(row, close)
+    s_ichi, d_ichi = score_ichimoku(row, close)
+
     # ── Regime multipliers per component ─────────────────────────────
     regime = str(row.get("regime", "RANGE"))
     if regime == "VOLATILE":
@@ -832,38 +1186,179 @@ def generate_signal(df: pd.DataFrame,
         trad_mult = 1.1
         str_mult  = 1.3   # structure matters most in trend
 
-    total_trad  = sum(trad_scores) * trad_mult
-    total_vol   = (s_obv + s_vwap + s_wr + s_cci + s_vctx) * vol_mult
+    total_vol   = (s_obv + s_vwap + s_wr + s_cci + s_vctx + s_mfi) * vol_mult
     total_smc   = (s_smc + s_expat) * smc_mult
-    total_str   = (s_rdiv + s_mch + s_sma + s_fib) * str_mult
-
-    # Normalize traditional score ke -10..+10
+    total_str   = (s_rdiv + s_mch + s_sma + s_fib + s_st + s_psar + s_ichi) * str_mult
     max_trad    = sum(WEIGHTS[k] for k in ["rsi","macd","ema_cross","bb","stoch","adx","candle"])
-    normalized_trad = (total_trad / max_trad) * 10 if max_trad > 0 else 0
+
+    # ── EMA short-trend alignment dampening ──────────────────────────
+    # Jika EMA20 > EMA50 (short uptrend): MACD & RSI sering SELL palsu
+    # saat koreksi kecil → dampen kontribusi mereka
+    _ema20_now = float(row.get(f"ema_{EMA_SLOW}",  close))
+    _ema50_now = float(row.get(f"ema_{EMA_TREND}", close))
+    _ema_short_up   = _ema20_now > _ema50_now   # True = short uptrend
+    _ema_short_down = _ema20_now < _ema50_now   # True = short downtrend
+
+    # Hitung normalized_trad awal sebelum dampening (untuk Quality Gate di bawah)
+    total_trad_raw  = sum(trad_scores) * trad_mult
+    normalized_trad = (total_trad_raw / max_trad) * 10 if max_trad > 0 else 0
+
+    # MACD histogram score (dari score_macd)
+    _macd_score = trad_scores[1]   # index 1 = score_macd
+    _rsi_score  = trad_scores[0]   # index 0 = score_rsi
+
+    # Kalau EMA bilang naik tapi MACD/RSI bilang turun = pullback noise
+    # Kurangi bobotnya agar tidak mendominasi
+    _dampen_trad = 1.0
+    if _ema_short_up and _macd_score < 0:
+        # MACD bearish tapi trend naik → itu koreksi, bukan reversal
+        trad_scores[1] = _macd_score * 0.3   # dampen 70%
+        _dampen_trad = 0.9
+        filters["trad_dampen"] = "MACD bearish di EMA uptrend — dikurangi 70%"
+    if _ema_short_up and _rsi_score < 0:
+        trad_scores[0] = _rsi_score * 0.4    # dampen 60%
+        _dampen_trad = min(_dampen_trad, 0.9)
+        filters["trad_dampen"] = filters.get("trad_dampen","") + " | RSI bearish di EMA uptrend — dikurangi 60%"
+    if _ema_short_down and _macd_score > 0:
+        trad_scores[1] = _macd_score * 0.3
+        _dampen_trad = 0.9
+        filters["trad_dampen"] = "MACD bullish di EMA downtrend — dikurangi 70%"
+    if _ema_short_down and _rsi_score > 0:
+        trad_scores[0] = _rsi_score * 0.4
+        _dampen_trad = min(_dampen_trad, 0.9)
+
+    # Recalculate trad score setelah dampen
+    total_trad = sum(trad_scores) * trad_mult * _dampen_trad
 
     # Signal Quality Gate: jika contradicting signals, dampen score
     # RSI divergence opposing EMA direction → reduce confidence
     if s_rdiv > 0 and normalized_trad < -2:
-        # Divergence says BUY but trend says SELL — reduce divergence weight
         total_str *= 0.5
     elif s_rdiv < 0 and normalized_trad > 2:
         total_str *= 0.5
 
-    # Volume + SMC + Structure: langsung tambahkan
+    # Recalculate normalized trad setelah dampen
+    max_trad        = sum(WEIGHTS[k] for k in ["rsi","macd","ema_cross","bb","stoch","adx","candle"])
+    normalized_trad = (total_trad / max_trad) * 10 if max_trad > 0 else 0
+
+    # Score murni teknikal — news tidak masuk score
     final_score = round(
-        normalized_trad + total_vol + total_smc + total_str
-        + news_contribution + memory_contribution,
+        normalized_trad + total_vol + total_smc + total_str + memory_contribution,
         2
     )
 
-    # ── Signal Quality Gate: confidence threshold ──────────────────────
-    # Jika sinyal lemah (abu-abu) → WAIT daripada masuk dengan keyakinan rendah
-    MIN_CONFIDENCE = 3.0
-    if direction in ("BUY", "SELL") and abs(final_score) < MIN_CONFIDENCE:
-        direction = "WAIT"
-        reasons.append((0, f"Score {final_score:.2f} < MIN_CONFIDENCE {MIN_CONFIDENCE} — terlalu lemah"))
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # SIMPLIFIED CONFIDENCE SCORING (max 6 here, +1 ML in bot.py = 7)
+    # +2 trend aligned  |  +2 valid candle  |  +1 key level
+    # +1 strong momentum (RSI > 55 BUY / < 45 SELL)  |  (ML: +1 bot.py)
+    # Threshold: MIN_QUALITY_SCORE (default 4)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    confidence = 0
+    conf_notes = []
 
-    # Block RANGE regime tanpa SMC atau RSI divergence signal
+    if direction in ("BUY", "SELL"):
+        _e20  = float(row.get(f"ema_{EMA_SLOW}",  close))
+        _e50  = float(row.get(f"ema_{EMA_TREND}", close))
+        _e200 = float(row.get(f"ema_{EMA_LONG}",  close))
+
+        # +2: Trend aligned (macro + short)
+        _macro_ok  = (direction == "BUY"  and _e50 > _e200) or \
+                     (direction == "SELL" and _e50 < _e200)
+        _short_ok  = (direction == "BUY"  and _e20 > _e50)  or \
+                     (direction == "SELL" and _e20 < _e50)
+        if _macro_ok and _short_ok:
+            confidence += 2
+            conf_notes.append("trend✓")
+        elif _macro_ok or _short_ok:
+            confidence += 1
+            conf_notes.append("trend~")
+
+        # +2: Valid candle pattern passed the hard filter (already validated above)
+        # Candle confirmed = _make_decision would have returned WAIT if not
+        confidence += 2
+        conf_notes.append("candle✓")
+
+        # +1: Near key level — Fib support/resistance or SMC zone aligned
+        _smc_ok  = (s_smc > 0.5 and direction == "BUY")  or \
+                   (s_smc < -0.5 and direction == "SELL")
+        _fib_ok  = (s_fib > 0   and direction == "BUY")  or \
+                   (s_fib < 0   and direction == "SELL")
+        _rdiv_ok = (s_rdiv > 0  and direction == "BUY")  or \
+                   (s_rdiv < 0  and direction == "SELL")
+        if _smc_ok or _fib_ok or _rdiv_ok:
+            confidence += 1
+            conf_notes.append("level✓")
+
+        # +1: Strong momentum (RSI > 55 for BUY, < 45 for SELL)
+        _rsi_now = float(row.get("rsi", 50))
+        if (direction == "BUY" and _rsi_now > 55) or (direction == "SELL" and _rsi_now < 45):
+            confidence += 1
+            conf_notes.append("momentum✓")
+
+        filters["confidence"] = f"{confidence}/6 ({' '.join(conf_notes)})"
+
+        if confidence < MIN_QUALITY_SCORE:
+            direction = "WAIT"
+            reasons.append((0, f"Confidence {confidence}/6 < min {MIN_QUALITY_SCORE} "
+                              f"— {' '.join(conf_notes) or 'insufficient confirms'}"))
+        else:
+            reasons.append((0, f"Confidence {confidence}/6 ✓ ({' '.join(conf_notes)})"))
+
+    # Score floor — pakai adaptive threshold jika tersedia
+    _min_score = MIN_SIGNAL_SCORE
+    try:
+        from ml.adaptive import get_learner
+        _min_score = get_learner().min_score
+    except Exception:
+        pass
+    if direction in ("BUY", "SELL") and abs(final_score) < _min_score:
+        direction = "WAIT"
+        reasons.append((0, f"Score {final_score:.2f} < {_min_score:.1f} — signal terlalu lemah"))
+
+    # ── Counter-Trend Gate: butuh 2x score jika melawan EMA short trend ──────
+    # Contoh: EMA20 > EMA50 (naik) tapi signal SELL → itu koreksi, bukan reversal
+    # Butuh bukti kuat (2x min score) sebelum melawan trend
+    if direction in ("BUY", "SELL"):
+        _e20_ct = float(row.get(f"ema_{EMA_SLOW}",  close))
+        _e50_ct = float(row.get(f"ema_{EMA_TREND}", close))
+        _short_tr = "BUY" if _e20_ct > _e50_ct else ("SELL" if _e20_ct < _e50_ct else None)
+
+        if _short_tr and direction != _short_tr:
+            _counter_min = _min_score * 2.0   # 5.0 → 10.0 untuk counter-trend
+            if abs(final_score) < _counter_min:
+                reasons.append((0, f"Counter short-trend ({direction} vs EMA {_short_tr}) "
+                                   f"— score {final_score:.1f} < {_counter_min:.1f} (2x min) → WAIT"))
+                filters["counter_trend"] = (f"BLOK — {direction} vs EMA {_short_tr}, "
+                                            f"score {final_score:.1f} perlu {_counter_min:.1f}")
+                direction = "WAIT"
+            else:
+                reasons.append((0, f"Counter short-trend ({direction} vs EMA {_short_tr}) "
+                                   f"— score {final_score:.1f} >= {_counter_min:.1f} OK (reversal kuat)"))
+                filters["counter_trend"] = (f"LOLOS — counter-trend tapi score kuat "
+                                            f"{final_score:.1f} >= {_counter_min:.1f}")
+
+    # ── Session Bias Filter ───────────────────────────────────────────────────
+    # Bias dari analisis jam tutup sesi: hanya izinkan arah yang searah bias HTF
+    try:
+        from data.session_bias import get_current_bias
+        _bias = get_current_bias()
+        if _bias and _bias.get("direction") in ("BUY", "SELL"):
+            _bias_dir = _bias["direction"]
+            _bias_str = _bias.get("strength", "")
+            _bias_sco = _bias.get("score", 0)
+            if direction in ("BUY", "SELL") and direction != _bias_dir:
+                # Hanya block jika bias kuat (score > 3) dan signal lemah (score < 7)
+                if abs(_bias_sco) >= 3.0 and abs(final_score) < 7.0:
+                    reasons.append((0, f"Session Bias: {_bias_dir} ({_bias_str}) "
+                                       f"berlawanan dengan signal — WAIT"))
+                    direction = "WAIT"
+            elif direction in ("BUY", "SELL") and direction == _bias_dir:
+                reasons.append((0, f"Session Bias: {_bias_dir} ({_bias_str}) "
+                                   f"SEARAH — boost konfirmasi"))
+    except Exception:
+        pass
+
+    # Block RANGE regime tanpa SMC atau RSI divergence
     if regime == "RANGE" and direction in ("BUY", "SELL"):
         smc_present = abs(s_smc) > 0.5
         div_present = abs(s_rdiv) > 0
@@ -894,10 +1389,19 @@ def generate_signal(df: pd.DataFrame,
         reasons.append((s_sma, d_sma))
     if s_fib != 0:
         reasons.append((s_fib, d_fib))
+    if s_mfi != 0:
+        reasons.append((s_mfi, d_mfi))
+    if s_st != 0:
+        reasons.append((s_st, d_st))
+    if s_psar != 0:
+        reasons.append((s_psar, d_psar))
+    if s_ichi != 0:
+        reasons.append((s_ichi, d_ichi))
 
     # ── Regime info ────────────────────────────────────────────────────
     filters["regime_score"] = (
-        f"Regime={regime} | Trad×{trad_mult} SMC×{smc_mult} Vol×{vol_mult} Str×{str_mult}"
+        f"Regime={regime} | Trad×{trad_mult} SMC×{smc_mult} Vol×{vol_mult} Str×{str_mult} "
+        f"[ST:{s_st:+.1f} PSAR:{s_psar:+.1f} Ichi:{s_ichi:+.1f} MFI:{s_mfi:+.1f}]"
     )
 
     tp_sl = calculate_smart_tp_sl(direction, close, atr, df, final_score)
@@ -908,9 +1412,16 @@ def generate_signal(df: pd.DataFrame,
     elif direction in ("BUY", "SELL"):
         filters["rr"] = f"OK — RR {tp_sl['rr']}"
 
+    # ── Market state for output ──────────────────────────────────────────
+    _adx_val     = float(row.get("adx", 0))
+    _market_state = ("TREND" if _adx_val >= ADX_TREND_MIN else
+                     "UNCLEAR" if _adx_val >= 20 else "RANGE")
+
     return {
         "direction":        direction,
         "score":            final_score,
+        "confidence":       confidence,           # 0-6 quality score
+        "market_state":     _market_state,        # TREND / UNCLEAR / RANGE
         "score_technical":  round(normalized_trad, 2),
         "score_volume":     round(total_vol, 2),
         "score_smc":        round(total_smc, 2),
@@ -949,19 +1460,22 @@ def print_filter_log(filters: dict, direction: str) -> None:
     print(f"\n  {BOLD}[FILTER LOG]{RESET}  Final: {dc}{BOLD}{direction}{RESET}")
 
     icons = {
-        "regime":        "  ",
-        "regime_score":  "  ",
-        "trend":         "  ",
-        "news":          "  ",
-        "momentum":      "  ",
-        "pullback":      "  ",
-        "confirmation":  "  ",
-        "candle_trend":  "  ",
-        "rr":            "  ",
+        "market_state":   "  ",
+        "trend":          "  ",
+        "news":           "  ",
+        "momentum":       "  ",
+        "candle_pattern": "  ",
+        "no_trade_zone":  "  ",
+        "confidence":     "  ",
+        "rr":             "  ",
+        "regime":         "  ",
+        "regime_score":   "  ",
+        "candle_trend":   "  ",
     }
     for key, val in filters.items():
         icon   = icons.get(key, "  ")
         passed = not any(x in str(val) for x in
-                         ["SKIP", "WEAK", "REJECT", "belum", "tunggu", "NO TRADE"])
+                         ["SKIP", "WEAK", "REJECT", "NO TRADE", "CANCEL", "COUNTER",
+                          "belum", "tunggu", "berlawanan", "FLAT"])
         color  = GREEN if passed else (RED if "NO TRADE" in str(val) or "REJECT" in str(val) else YELLOW)
         print(f"    {icon} {key:<16}: {color}{val}{RESET}")

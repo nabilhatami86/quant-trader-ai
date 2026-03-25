@@ -1,0 +1,424 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// XAU/USD Advanced Scalper [Jake-Style]
+// Created by : Livingstonedan
+// Powered by : ChatGPT × Jake-style automation logic
+// Version    : 1.0  |  13 Mei 2025
+// Optimized  : 1m / 3m / 5m / 15m / 30m  —  XAU/USD Scalping
+// ═══════════════════════════════════════════════════════════════════════════
+//@version=5
+indicator("XAU/USD Advanced Scalper [Jake-Style]",
+         shorttitle  = "XAUUSD·Scalper",
+         overlay     = true,
+         max_lines_count  = 50,
+         max_labels_count = 100,
+         max_boxes_count  = 10)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  INPUTS
+// ───────────────────────────────────────────────────────────────────────────
+
+// EMA Cloud
+grp_ema = "── EMA Cloud System ──"
+show_ema    = input.bool(true,  "Show EMA Cloud",        group=grp_ema)
+e1_len      = input.int(5,      "EMA 1 (Fast)",          group=grp_ema)
+e2_len      = input.int(13,     "EMA 2",                 group=grp_ema)
+e3_len      = input.int(21,     "EMA 3",                 group=grp_ema)
+e4_len      = input.int(55,     "EMA 4 (Mid)",           group=grp_ema)
+e5_len      = input.int(144,    "EMA 5",                 group=grp_ema)
+e6_len      = input.int(377,    "EMA 6 (Slow)",          group=grp_ema)
+
+// PSAR
+grp_psar = "── PSAR Flip Dots ──"
+show_psar   = input.bool(true,  "Show PSAR Flip-Only",   group=grp_psar)
+psar_start  = input.float(0.02, "Start",  step=0.001,    group=grp_psar)
+psar_inc    = input.float(0.02, "Inc",    step=0.001,    group=grp_psar)
+psar_max    = input.float(0.2,  "Max",    step=0.01,     group=grp_psar)
+
+// Bollinger Bands
+grp_bb = "── Bollinger Band Zones ──"
+show_bb     = input.bool(true,  "Show BB Zones",         group=grp_bb)
+bb_len      = input.int(20,     "Length",                group=grp_bb)
+bb_mult     = input.float(2.0,  "Multiplier", step=0.1,  group=grp_bb)
+
+// Entry Signals
+grp_sig = "── Entry Signals ──"
+show_pred   = input.bool(true,  "Predictive Entry Flags",  group=grp_sig)
+show_true   = input.bool(true,  "TRUE Candle Entries",     group=grp_sig)
+min_body_pct = input.float(0.25, "Min Candle Body (×ATR)", group=grp_sig, step=0.05)
+
+// TP / SL
+grp_tpsl = "── TP / SL Levels ──"
+show_tpsl   = input.bool(true,  "Show TP/SL Lines",      group=grp_tpsl)
+atr_len     = input.int(14,     "ATR Length",            group=grp_tpsl)
+sl_atr      = input.float(1.0,  "SL  (×ATR)", step=0.1, group=grp_tpsl)
+tp1_atr     = input.float(1.5,  "TP1 (×ATR)", step=0.1, group=grp_tpsl)
+tp2_atr     = input.float(3.0,  "TP2 (×ATR)", step=0.1, group=grp_tpsl)
+tp3_atr     = input.float(5.0,  "TP3 (×ATR)", step=0.1, group=grp_tpsl)
+
+// Red Flags
+grp_rf = "── Red Flag Warnings ──"
+show_rf     = input.bool(true,  "Show Red Flag Warnings", group=grp_rf)
+tdi_ob_lvl  = input.int(68,     "TDI Overbought Level",   group=grp_rf)
+tdi_os_lvl  = input.int(32,     "TDI Oversold Level",     group=grp_rf)
+
+// Dashboard
+grp_dash = "── Dashboard ──"
+show_dash   = input.bool(true,  "Show Info Panel",       group=grp_dash)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  CALCULATIONS
+// ───────────────────────────────────────────────────────────────────────────
+
+atr     = ta.atr(atr_len)
+rsi     = ta.rsi(close, 14)
+[macd_l, macd_s, macd_h] = ta.macd(close, 12, 26, 9)
+
+// EMAs
+ema1 = ta.ema(close, e1_len)
+ema2 = ta.ema(close, e2_len)
+ema3 = ta.ema(close, e3_len)
+ema4 = ta.ema(close, e4_len)
+ema5 = ta.ema(close, e5_len)
+ema6 = ta.ema(close, e6_len)
+
+// Directional bias
+bull_bias   = ema1 > ema2 and ema2 > ema3 and ema3 > ema4
+bear_bias   = ema1 < ema2 and ema2 < ema3 and ema3 < ema4
+neutral     = not bull_bias and not bear_bias
+
+// Bollinger Bands
+[bb_mid, bb_up, bb_dn] = ta.bb(close, bb_len, bb_mult)
+bb_width = (bb_up - bb_dn) / bb_mid   // normalized bandwidth
+
+// PSAR
+psar        = ta.sar(psar_start, psar_inc, psar_max)
+psar_up     = psar < low
+psar_flip_u = psar_up  and not psar_up[1]    // just flipped bullish
+psar_flip_d = not psar_up and psar_up[1]     // just flipped bearish
+
+// TDI (RSI + smoothed signal line — Traders Dynamic Index style)
+rsi_sig     = ta.ema(rsi, 7)
+rsi_fast    = ta.ema(rsi, 2)
+tdi_ob      = rsi > tdi_ob_lvl
+tdi_os      = rsi < tdi_os_lvl
+tdi_xup     = ta.crossover(rsi_fast, rsi_sig)   // TDI buy cross
+tdi_xdn     = ta.crossunder(rsi_fast, rsi_sig)  // TDI sell cross
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  EMA CLOUD
+// ───────────────────────────────────────────────────────────────────────────
+
+c_bull  = color.new(color.lime,    0)
+c_bear  = color.new(color.red,     0)
+c_neut  = color.new(color.gray,    0)
+c_bias  = bull_bias ? c_bull : bear_bias ? c_bear : c_neut
+
+p_e1 = plot(show_ema ? ema1 : na, "EMA 5",   color=color.new(c_bias, 30), linewidth=1)
+p_e2 = plot(show_ema ? ema2 : na, "EMA 13",  color=color.new(c_bias, 40), linewidth=1)
+p_e3 = plot(show_ema ? ema3 : na, "EMA 21",  color=color.new(c_bias, 50), linewidth=1)
+p_e4 = plot(show_ema ? ema4 : na, "EMA 55",  color=color.new(color.blue,  20), linewidth=2)
+p_e5 = plot(show_ema ? ema5 : na, "EMA 144", color=color.new(color.purple,20), linewidth=2)
+p_e6 = plot(show_ema ? ema6 : na, "EMA 377", color=color.new(color.white, 10), linewidth=3)
+
+// Cloud fills between fast EMAs
+fill(p_e1, p_e2,
+     color = bull_bias ? color.new(color.lime,  75) :
+             bear_bias ? color.new(color.red,   75) :
+                         color.new(color.gray,  88),
+     title = "Cloud 5-13")
+fill(p_e2, p_e3,
+     color = bull_bias ? color.new(color.green, 82) :
+             bear_bias ? color.new(color.orange,82) :
+                         color.new(color.gray,  92),
+     title = "Cloud 13-21")
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  PSAR FLIP-ONLY DOTS
+// ───────────────────────────────────────────────────────────────────────────
+
+plotshape(show_psar and psar_flip_u,
+         title    = "PSAR Flip ↑",
+         location = location.belowbar,
+         style    = shape.circle,
+         size     = size.small,
+         color    = color.new(color.aqua, 0))
+
+plotshape(show_psar and psar_flip_d,
+         title    = "PSAR Flip ↓",
+         location = location.abovebar,
+         style    = shape.circle,
+         size     = size.small,
+         color    = color.new(color.orange, 0))
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  BOLLINGER BAND ZONES
+// ───────────────────────────────────────────────────────────────────────────
+
+p_bbu = plot(show_bb ? bb_up  : na, "BB Upper", color=color.new(color.silver,50), linewidth=1)
+p_bbd = plot(show_bb ? bb_dn  : na, "BB Lower", color=color.new(color.silver,50), linewidth=1)
+plot(show_bb ? bb_mid : na, "BB Mid", color=color.new(color.gray,60), style=plot.style_dashed, linewidth=1)
+fill(p_bbu, p_bbd, title="BB Zone", color=color.new(color.silver, 93))
+
+// Squeeze warning (low BB width)
+bb_squeeze = bb_width < ta.lowest(bb_width, 50) * 1.1
+bgcolor(show_bb and bb_squeeze ? color.new(color.yellow, 94) : na, title="BB Squeeze")
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  PREDICTIVE ENTRY FLAGS  (early signal before momentum candle)
+// ───────────────────────────────────────────────────────────────────────────
+
+// BUY setup: near lower BB, RSI recovering, MACD hist turning, short EMA rising
+pred_buy = show_pred
+    and (close <= bb_dn + atr * 0.6)
+    and ta.crossover(rsi, 38)
+    and (macd_h > macd_h[1] and macd_h[1] > macd_h[2])
+    and (ema1 > ema1[2])
+    and not tdi_ob
+
+// SELL setup: near upper BB, RSI rolling, MACD hist turning, short EMA falling
+pred_sell = show_pred
+    and (close >= bb_up - atr * 0.6)
+    and ta.crossunder(rsi, 62)
+    and (macd_h < macd_h[1] and macd_h[1] < macd_h[2])
+    and (ema1 < ema1[2])
+    and not tdi_os
+
+plotshape(pred_buy,
+         title    = "⚡ Predictive BUY",
+         location = location.belowbar,
+         style    = shape.triangleup,
+         size     = size.small,
+         color    = color.new(color.yellow, 0),
+         text     = "EARLY",
+         textcolor= color.yellow)
+
+plotshape(pred_sell,
+         title    = "⚡ Predictive SELL",
+         location = location.abovebar,
+         style    = shape.triangledown,
+         size     = size.small,
+         color    = color.new(color.fuchsia, 0),
+         text     = "EARLY",
+         textcolor= color.fuchsia)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  TRUE CANDLE LOGIC  (confirmed trend-following entry)
+// ───────────────────────────────────────────────────────────────────────────
+
+candle_body = math.abs(close - open)
+bull_candle  = close > open and candle_body >= atr * min_body_pct
+bear_candle  = close < open and candle_body >= atr * min_body_pct
+
+// TRUE BUY: confirmed bull candle + full EMA alignment + above BB mid + RSI zone
+true_buy = show_true
+    and bull_candle
+    and bull_bias
+    and close > bb_mid
+    and rsi > 50 and rsi < 72
+    and close > ema3
+    and not pred_buy[0]   // avoid duplicate with predictive
+
+// TRUE SELL: confirmed bear candle + full EMA alignment + below BB mid + RSI zone
+true_sell = show_true
+    and bear_candle
+    and bear_bias
+    and close < bb_mid
+    and rsi < 50 and rsi > 28
+    and close < ema3
+    and not pred_sell[0]
+
+plotshape(true_buy,
+         title    = "✅ TRUE BUY",
+         location = location.belowbar,
+         style    = shape.labelup,
+         size     = size.normal,
+         color    = color.new(color.green, 0),
+         text     = "BUY",
+         textcolor= color.white)
+
+plotshape(true_sell,
+         title    = "✅ TRUE SELL",
+         location = location.abovebar,
+         style    = shape.labeldown,
+         size     = size.normal,
+         color    = color.new(color.red, 0),
+         text     = "SELL",
+         textcolor= color.white)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  MULTI-LEVEL TP / SL LINES
+// ───────────────────────────────────────────────────────────────────────────
+
+var float  _entry = na
+var bool   _is_buy = false
+var line   _sl_ln  = na
+var line   _tp1_ln = na
+var line   _tp2_ln = na
+var line   _tp3_ln = na
+
+new_signal = (true_buy or true_sell) and show_tpsl
+
+if new_signal
+    // Clear previous lines
+    if not na(_sl_ln)
+        line.delete(_sl_ln)
+        line.delete(_tp1_ln)
+        line.delete(_tp2_ln)
+        line.delete(_tp3_ln)
+
+    _entry  := close
+    _is_buy := true_buy
+
+    _sl_val  = _is_buy ? close - atr * sl_atr  : close + atr * sl_atr
+    _tp1_val = _is_buy ? close + atr * tp1_atr : close - atr * tp1_atr
+    _tp2_val = _is_buy ? close + atr * tp2_atr : close - atr * tp2_atr
+    _tp3_val = _is_buy ? close + atr * tp3_atr : close - atr * tp3_atr
+
+    x2 = bar_index + 40
+
+    _sl_ln  := line.new(bar_index, _sl_val,  x2, _sl_val,  color=color.red,           style=line.style_dashed, width=1)
+    _tp1_ln := line.new(bar_index, _tp1_val, x2, _tp1_val, color=color.lime,          style=line.style_dotted, width=1)
+    _tp2_ln := line.new(bar_index, _tp2_val, x2, _tp2_val, color=color.green,         style=line.style_dotted, width=2)
+    _tp3_ln := line.new(bar_index, _tp3_val, x2, _tp3_val, color=color.teal,          style=line.style_solid,  width=2)
+
+    label.new(bar_index + 2, _sl_val,  "SL  " + str.tostring(math.round(_sl_val, 2)),  color=color.new(color.red,   20), textcolor=color.white, size=size.tiny, style=label.style_label_left)
+    label.new(bar_index + 2, _tp1_val, "TP1 " + str.tostring(math.round(_tp1_val, 2)), color=color.new(color.lime,  20), textcolor=color.black, size=size.tiny, style=label.style_label_left)
+    label.new(bar_index + 2, _tp2_val, "TP2 " + str.tostring(math.round(_tp2_val, 2)), color=color.new(color.green, 20), textcolor=color.white, size=size.tiny, style=label.style_label_left)
+    label.new(bar_index + 2, _tp3_val, "TP3 " + str.tostring(math.round(_tp3_val, 2)), color=color.new(color.teal,  20), textcolor=color.white, size=size.tiny, style=label.style_label_left)
+
+// TP/SL hit detection (real-time)
+sl_hit  = not na(_entry) and (_is_buy ? low  <= _entry - atr * sl_atr  : high >= _entry + atr * sl_atr)
+tp1_hit = not na(_entry) and (_is_buy ? high >= _entry + atr * tp1_atr : low  <= _entry - atr * tp1_atr)
+tp2_hit = not na(_entry) and (_is_buy ? high >= _entry + atr * tp2_atr : low  <= _entry - atr * tp2_atr)
+tp3_hit = not na(_entry) and (_is_buy ? high >= _entry + atr * tp3_atr : low  <= _entry - atr * tp3_atr)
+
+plotchar(sl_hit  and not sl_hit[1],  title="SL Hit",  char="✕", location=location.abovebar, color=color.red,   size=size.normal)
+plotchar(tp1_hit and not tp1_hit[1], title="TP1 Hit", char="①", location=location.abovebar, color=color.lime,  size=size.small)
+plotchar(tp2_hit and not tp2_hit[1], title="TP2 Hit", char="②", location=location.abovebar, color=color.green, size=size.small)
+plotchar(tp3_hit and not tp3_hit[1], title="TP3 Hit", char="③", location=location.abovebar, color=color.teal,  size=size.normal)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  RED FLAG WARNINGS
+// ───────────────────────────────────────────────────────────────────────────
+
+// TDI overbought: RSI > threshold AND fast RSI just crossed below signal (losing steam)
+rf_ob = show_rf and tdi_ob and tdi_xdn                      // overbought + TDI sell cross
+rf_os = show_rf and tdi_os and tdi_xup                      // oversold + TDI buy cross
+
+// Failed breakout: price pierced BB but reversed hard
+failed_up   = show_rf and high > bb_up  and close < bb_up  and (open - close) > atr * 0.3
+failed_down = show_rf and low  < bb_dn  and close > bb_dn  and (close - open) > atr * 0.3
+
+rf_sell = rf_ob or failed_up     // caution for longs
+rf_buy  = rf_os or failed_down   // caution for shorts
+
+plotshape(rf_sell,
+         title    = "🚩 Red Flag (Exit Long)",
+         location = location.abovebar,
+         style    = shape.xcross,
+         size     = size.small,
+         color    = color.new(color.red, 0),
+         text     = "⚠",
+         textcolor= color.red)
+
+plotshape(rf_buy,
+         title    = "🚩 Red Flag (Exit Short)",
+         location = location.belowbar,
+         style    = shape.xcross,
+         size     = size.small,
+         color    = color.new(color.orange, 0),
+         text     = "⚠",
+         textcolor= color.orange)
+
+// Extreme RSI background tint
+bgcolor(rsi > 75 ? color.new(color.red,   93) :
+        rsi < 25 ? color.new(color.green, 93) : na,
+        title = "RSI Extreme Background")
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  INFO DASHBOARD
+// ───────────────────────────────────────────────────────────────────────────
+
+if show_dash and barstate.islast
+    bias_txt  = bull_bias ? "▲ BULLISH" : bear_bias ? "▼ BEARISH" : "◆ NEUTRAL"
+    bias_col  = bull_bias ? color.lime : bear_bias ? color.red : color.gray
+    rsi_txt   = rsi > tdi_ob_lvl ? "OB" : rsi < tdi_os_lvl ? "OS" : "OK"
+    sq_txt    = bb_squeeze ? "YES ⚠" : "no"
+
+    var table dash = table.new(position.top_right, 2, 7,
+                 border_color=color.new(color.gray, 60), border_width=1,
+                 bgcolor=color.new(color.black, 70))
+
+    table.cell(dash, 0, 0, "XAUUSD Scalper",      text_color=color.white,  text_size=size.small, bgcolor=color.new(color.navy, 30))
+    table.cell(dash, 1, 0, "Jake-Style v1.0",     text_color=color.silver, text_size=size.tiny,  bgcolor=color.new(color.navy, 30))
+    table.cell(dash, 0, 1, "Bias",                text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 1, bias_txt,              text_color=bias_col,     text_size=size.small)
+    table.cell(dash, 0, 2, "RSI",                 text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 2, str.tostring(math.round(rsi, 1)) + "  " + rsi_txt,
+                                                  text_color=rsi > tdi_ob_lvl ? color.red : rsi < tdi_os_lvl ? color.lime : color.white,
+                                                  text_size=size.small)
+    table.cell(dash, 0, 3, "ATR",                 text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 3, str.tostring(math.round(atr, 2)), text_color=color.white, text_size=size.small)
+    table.cell(dash, 0, 4, "PSAR",                text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 4, psar < low ? "▲ Below price" : "▼ Above price",
+                                                  text_color=psar < low ? color.aqua : color.orange,
+                                                  text_size=size.small)
+    table.cell(dash, 0, 5, "BB Squeeze",          text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 5, sq_txt,                text_color=bb_squeeze ? color.yellow : color.gray,
+                                                  text_size=size.small)
+    table.cell(dash, 0, 6, "Last Signal",         text_color=color.gray,   text_size=size.tiny)
+    table.cell(dash, 1, 6, na(_entry) ? "—" : (_is_buy ? "BUY @ " : "SELL @ ") + str.tostring(math.round(_entry, 2)),
+                                                  text_color=na(_entry) ? color.gray : _is_buy ? color.lime : color.red,
+                                                  text_size=size.small)
+
+// ───────────────────────────────────────────────────────────────────────────
+// ░░  ALERTS
+// ───────────────────────────────────────────────────────────────────────────
+
+alertcondition(pred_buy,
+     title   = "⚡ Predictive BUY — Early Signal",
+     message = "⚡ EARLY BUY — XAU/USD | Momentum building before move. Watch for confirmation.")
+
+alertcondition(pred_sell,
+     title   = "⚡ Predictive SELL — Early Signal",
+     message = "⚡ EARLY SELL — XAU/USD | Momentum building before move. Watch for confirmation.")
+
+alertcondition(true_buy,
+     title   = "✅ TRUE BUY — Confirmed Entry",
+     message = "✅ TRUE BUY — XAU/USD | Full confirmation. EMA aligned + candle + RSI.")
+
+alertcondition(true_sell,
+     title   = "✅ TRUE SELL — Confirmed Entry",
+     message = "✅ TRUE SELL — XAU/USD | Full confirmation. EMA aligned + candle + RSI.")
+
+alertcondition(psar_flip_u,
+     title   = "🔄 PSAR Flip → Bullish",
+     message = "🔄 PSAR FLIP UP — XAU/USD | Trend reversal to bullish detected.")
+
+alertcondition(psar_flip_d,
+     title   = "🔄 PSAR Flip → Bearish",
+     message = "🔄 PSAR FLIP DOWN — XAU/USD | Trend reversal to bearish detected.")
+
+alertcondition(rf_sell,
+     title   = "🚩 Red Flag — Exit Long Caution",
+     message = "🚩 RED FLAG — XAU/USD | Overbought TDI or failed breakout. Consider exit.")
+
+alertcondition(rf_buy,
+     title   = "🚩 Red Flag — Exit Short Caution",
+     message = "🚩 RED FLAG — XAU/USD | Oversold TDI or failed breakdown. Consider exit.")
+
+alertcondition(sl_hit and not sl_hit[1],
+     title   = "🛑 STOP LOSS HIT",
+     message = "🛑 STOP LOSS — XAU/USD | Position closed at loss level.")
+
+alertcondition(tp1_hit and not tp1_hit[1],
+     title   = "💰 TP1 HIT",
+     message = "💰 TP1 HIT — XAU/USD | First target reached. Consider partial close.")
+
+alertcondition(tp2_hit and not tp2_hit[1],
+     title   = "💰💰 TP2 HIT",
+     message = "💰💰 TP2 HIT — XAU/USD | Second target reached. Move SL to breakeven.")
+
+alertcondition(tp3_hit and not tp3_hit[1],
+     title   = "🏆 TP3 FULL TARGET",
+     message = "🏆 TP3 HIT — XAU/USD | Full target reached. Close position.")

@@ -119,3 +119,91 @@ async def get_candle_logs(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+async def get_candle_logs_df(
+    db: AsyncSession, symbol: str, timeframe: str, limit: int = 5000
+) -> "pd.DataFrame":
+    """Fetch candle_logs sebagai DataFrame — kolom sama dengan CSV candle log."""
+    result = await db.execute(
+        select(CandleLog)
+        .where(CandleLog.symbol == symbol, CandleLog.timeframe == timeframe)
+        .order_by(CandleLog.timestamp.asc())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return pd.DataFrame()
+
+    records = []
+    for r in rows:
+        records.append({
+            "time":        str(r.timestamp)[:19],
+            "open":        r.open,
+            "high":        r.high,
+            "low":         r.low,
+            "close":       r.close,
+            "candle":      r.candle_type or "",
+            "body":        r.body,
+            "wick_up":     r.wick_up,
+            "wick_down":   r.wick_down,
+            "pattern":     r.pattern or "",
+            "rsi":         r.rsi,
+            "ema20":       r.ema20,
+            "ema50":       r.ema50,
+            "macd":        r.macd,
+            "histogram":   r.histogram,
+            "adx":         r.adx,
+            "atr":         r.atr,
+            "signal":      r.signal_dir or "",
+            "score":       r.score,
+            "sl":          r.sl,
+            "tp":          r.tp,
+            # SMC
+            "fvg_bull":    r.fvg_bull,
+            "fvg_bear":    r.fvg_bear,
+            "ob_bull":     r.ob_bull,
+            "ob_bear":     r.ob_bear,
+            "bos_bull":    r.bos_bull,
+            "bos_bear":    r.bos_bear,
+            "choch_bull":  r.choch_bull,
+            "choch_bear":  r.choch_bear,
+            "regime":      r.regime or "",
+            # Volume
+            "obv":         r.obv,
+            "vwap":        r.vwap,
+            "williams_r":  r.williams_r,
+            "cci":         r.cci,
+            "vol_ratio":   r.vol_ratio,
+            # Outcome
+            "outcome":     r.outcome or "",
+            "outcome_pct": r.outcome_pct,
+            "logged_at":   str(r.logged_at)[:19] if r.logged_at else "",
+        })
+    return pd.DataFrame(records)
+
+
+async def update_outcomes_batch(
+    db: AsyncSession, symbol: str, timeframe: str,
+    updates: list[dict]
+) -> int:
+    """
+    Update outcome + outcome_pct untuk baris tertentu.
+    updates: [{"timestamp": datetime, "outcome": "WIN", "outcome_pct": 0.05}, ...]
+    """
+    from sqlalchemy import update as sa_update
+    count = 0
+    for u in updates:
+        stmt = (
+            sa_update(CandleLog)
+            .where(
+                CandleLog.symbol    == symbol,
+                CandleLog.timeframe == timeframe,
+                CandleLog.timestamp == u["timestamp"],
+            )
+            .values(outcome=u["outcome"], outcome_pct=u["outcome_pct"])
+        )
+        await db.execute(stmt)
+        count += 1
+    await db.commit()
+    return count
