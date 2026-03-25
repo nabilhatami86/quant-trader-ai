@@ -100,15 +100,20 @@ def log_exit(symbol: str, timeframe: str, ticket: int,
 
     pips = (exit_price - entry_price) if direction == "BUY" else (entry_price - exit_price)
 
-    if tp_v and sl_v:
+    # Gunakan P&L sebagai klasifikasi utama (paling akurat)
+    # Price-based hanya fallback jika pnl=0 (deal tidak ditemukan di MT5 history)
+    if pnl != 0:
+        result = "WIN" if pnl > 0 else "LOSS"
+    elif tp_v and sl_v and exit_price:
         if direction == "BUY":
             result = "WIN"  if exit_price >= tp_v * 0.995 else \
                      "LOSS" if exit_price <= sl_v * 1.005 else "MANUAL"
         else:
+            # SELL: TP di bawah entry, SL di atas entry
             result = "WIN"  if exit_price <= tp_v * 1.005 else \
                      "LOSS" if exit_price >= sl_v * 0.995 else "MANUAL"
     else:
-        result = "WIN" if pnl > 0 else "LOSS"
+        result = "MANUAL"
 
     df.at[idx, "exit_time"]  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df.at[idx, "exit_price"] = str(round(exit_price, 5))
@@ -141,6 +146,7 @@ def get_stats(symbol: str = "", timeframe: str = "") -> dict:
             "open": int((df["result"] == "OPEN").sum()),
         }
 
+    import numpy as np
     wins       = int((closed["result"] == "WIN").sum())
     losses     = int((closed["result"] == "LOSS").sum())
     manuals    = int((closed["result"] == "MANUAL").sum())
@@ -151,18 +157,48 @@ def get_stats(symbol: str = "", timeframe: str = "") -> dict:
     avg_loss   = pnl_s[pnl_s < 0].mean()  if (pnl_s < 0).any() else 0
     max_win    = pnl_s.max() if not pnl_s.empty else 0
     max_loss   = pnl_s.min() if not pnl_s.empty else 0
+
+    # Profit Factor = total_profit / total_loss  (target > 1.5)
+    _total_profit = pnl_s[pnl_s > 0].sum()
+    _total_loss   = abs(pnl_s[pnl_s < 0].sum())
+    profit_factor = round(_total_profit / _total_loss, 2) if _total_loss > 0 else float("inf")
+
+    # Max Drawdown dari equity curve
+    _equity     = np.array(pnl_s.cumsum())
+    _peak       = np.maximum.accumulate(_equity)
+    _max_dd     = float((_equity - _peak).min()) if len(_equity) > 0 else 0
+
+    # Average R (avg_win / avg_loss ratio)
+    avg_rr = round(avg_win / abs(avg_loss), 2) if avg_loss != 0 else 0
+
+    # Win/Loss streak
+    _results = closed["result"].tolist()
+    _max_cw = _max_cl = _cw = _cl = 0
+    for r in _results:
+        if r == "WIN":
+            _cw += 1; _cl = 0
+        elif r == "LOSS":
+            _cl += 1; _cw = 0
+        _max_cw = max(_max_cw, _cw)
+        _max_cl = max(_max_cl, _cl)
+
     return {
-        "total":     total,
-        "wins":      wins,
-        "losses":    losses,
-        "manuals":   manuals,
-        "win_rate":  round(wins / total * 100, 1) if total else 0,
-        "total_pnl": round(total_pnl, 2),
-        "avg_win":   round(avg_win, 2),
-        "avg_loss":  round(avg_loss, 2),
-        "max_win":   round(max_win, 2),
-        "max_loss":  round(max_loss, 2),
-        "open":      int((df["result"] == "OPEN").sum()),
+        "total":          total,
+        "wins":           wins,
+        "losses":         losses,
+        "manuals":        manuals,
+        "win_rate":       round(wins / total * 100, 1) if total else 0,
+        "total_pnl":      round(total_pnl, 2),
+        "avg_win":        round(avg_win, 2),
+        "avg_loss":       round(avg_loss, 2),
+        "max_win":        round(max_win, 2),
+        "max_loss":       round(max_loss, 2),
+        "profit_factor":  profit_factor,          # target > 1.5
+        "max_drawdown":   round(_max_dd, 2),       # max penurunan dari peak
+        "avg_rr":         avg_rr,                  # avg R multiple
+        "max_win_streak": _max_cw,
+        "max_loss_streak":_max_cl,
+        "open":           int((df["result"] == "OPEN").sum()),
     }
 
 

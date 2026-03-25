@@ -5,37 +5,37 @@
     "score": 1.5,
     "reasons": [
       "H4 trend tidak jelas (EMA mixed)",
-      "RSI H4 62.7 \u2014 momentum bullish",
-      "ADX H4 43.7 \u2014 trend kuat (valid)",
+      "RSI H4 66.1 \u2014 momentum bullish",
+      "ADX H4 40.9 \u2014 trend kuat (valid)",
       "Daily: 2/3 candle terakhir bullish",
-      "Daily: price 4564.35 bawah EMA50 (4948.08)",
-      "Harga di area mid-range 4610.12 \u2014 konsolidasi"
+      "Daily: price 4555.27 bawah EMA50 (4947.72)",
+      "Harga di area mid-range 4571.42 \u2014 konsolidasi"
     ],
     "details": {
-      "h4_close": 4564.347,
-      "h4_ema20": 4511.99909,
-      "h4_ema50": 4675.22684,
+      "h4_close": 4555.269,
+      "h4_ema20": 4521.30491,
+      "h4_ema50": 4666.13045,
       "h4_trend": "MIXED",
-      "h4_rsi": 62.7,
-      "h4_adx": 43.7,
+      "h4_rsi": 66.1,
+      "h4_adx": 40.9,
       "h4_structure": {
-        "HH": 3,
-        "HL": 6,
-        "LH": 6,
-        "LL": 3
+        "HH": 4,
+        "HL": 5,
+        "LH": 5,
+        "LL": 4
       },
       "daily_bull_3": 2,
       "daily_bear_3": 1,
-      "daily_ema50": 4948.07784,
-      "swing_high": 5121.882,
+      "daily_ema50": 4947.72184,
+      "swing_high": 5044.474,
       "swing_low": 4098.357,
-      "mid_level": 4610.1195,
+      "mid_level": 4571.4155,
       "final_score": 1.5
     },
-    "h4_price": 4564.347,
-    "timestamp": "2026-03-25T15:45:56.905740",
-    "session": "Tokyo",
-    "next_session": "London"
+    "h4_price": 4555.269,
+    "timestamp": "2026-03-25T23:45:52.924009",
+    "session": "London",
+    "next_session": "New York"
   },
   "history": [
     {
@@ -48,6 +48,13 @@
       "timestamp": "2026-03-25T15:45:56.905740",
       "session": "Tokyo",
       "next_session": "London",
+      "direction": "NEUTRAL",
+      "score": 1.5
+    },
+    {
+      "timestamp": "2026-03-25T23:45:52.924009",
+      "session": "London",
+      "next_session": "New York",
       "direction": "NEUTRAL",
       "score": 1.5
     }

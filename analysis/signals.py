@@ -82,6 +82,102 @@ def _find_swing_levels(df: pd.DataFrame, lookback: int = 100,
 
 
 # ─────────────────────────────────────────────
+# MARKET STRUCTURE DETECTION (Upgrade 9)
+# ─────────────────────────────────────────────
+
+def _check_market_structure(df: pd.DataFrame, direction: str,
+                            lookback: int = 20) -> tuple[bool, str]:
+    """
+    Deteksi struktur pasar dari pivot highs/lows.
+    BUY valid hanya di uptrend structure (HH + HL).
+    SELL valid hanya di downtrend structure (LL + LH).
+    Hanya blok jika berlawanan penuh (HH+HL saat SELL atau LL+LH saat BUY).
+    """
+    if len(df) < lookback + 3:
+        return True, "structure: data kurang"
+
+    hi = df["High"].iloc[-lookback:].values
+    lo = df["Low"].iloc[-lookback:].values
+
+    ph, pl = [], []
+    for i in range(1, len(hi) - 1):
+        if hi[i] >= hi[i - 1] and hi[i] >= hi[i + 1]:
+            ph.append(float(hi[i]))
+        if lo[i] <= lo[i - 1] and lo[i] <= lo[i + 1]:
+            pl.append(float(lo[i]))
+
+    if len(ph) < 2 or len(pl) < 2:
+        return True, "structure: pivot kurang — skip"
+
+    hh = ph[-1] > ph[-2]   # Higher High
+    lh = ph[-1] < ph[-2]   # Lower High
+    hl = pl[-1] > pl[-2]   # Higher Low
+    ll = pl[-1] < pl[-2]   # Lower Low
+
+    if direction == "BUY":
+        if ll and lh:
+            return False, f"LL+LH downtrend (H:{ph[-2]:.0f}>{ph[-1]:.0f}, L:{pl[-2]:.0f}>{pl[-1]:.0f}) — blok BUY"
+        tag = ("HH+HL uptrend" if (hh and hl) else
+               ("HH" if hh else ("HL" if hl else "mixed")))
+        return True, f"{tag} ✓"
+    else:  # SELL
+        if hh and hl:
+            return False, f"HH+HL uptrend (H:{ph[-1]:.0f}>{ph[-2]:.0f}, L:{pl[-1]:.0f}>{pl[-2]:.0f}) — blok SELL"
+        tag = ("LL+LH downtrend" if (ll and lh) else
+               ("LL" if ll else ("LH" if lh else "mixed")))
+        return True, f"{tag} ✓"
+
+
+# ─────────────────────────────────────────────
+# FAKE BREAKOUT DETECTOR (Upgrade: Anti-FakeBreak)
+# ─────────────────────────────────────────────
+
+def _check_fake_breakout(df: pd.DataFrame, direction: str,
+                         close: float, atr: float) -> tuple[bool, str]:
+    """
+    Deteksi fake breakout: harga menembus swing level tapi:
+      - candle sebelumnya belum konfirmasi (masih di dalam range), ATAU
+      - volume jauh di bawah rata-rata (breakout tanpa partisipasi)
+    Hanya aktif saat ada sinyal breakout nyata (harga keluar dari swing range 9 candle).
+    Returns (is_fake, message) — is_fake=True berarti fake, jangan entry.
+    """
+    if len(df) < 15:
+        return False, "breakout check: data kurang — skip"
+
+    _prev9 = df.iloc[-10:-1]   # 9 candle sebelum candle terakhir
+    _last_vol = float(df["Volume"].iloc[-1])  if "Volume" in df.columns else 0
+    _avg_vol  = float(df["Volume"].iloc[-20:].mean()) if "Volume" in df.columns else 0
+
+    if direction == "BUY":
+        _swing_hi = float(_prev9["High"].max())
+        if close <= _swing_hi:
+            return False, "bukan breakout BUY — harga masih dalam range"
+        # candle sebelumnya harus sudah close di atas swing (konfirmasi)
+        _prev_close = float(df["Close"].iloc[-2])
+        if _prev_close < _swing_hi * 0.9985:
+            return True, (f"FAKE BREAKOUT BUY — close[−1]={_prev_close:.2f} "
+                          f"masih di bawah swing {_swing_hi:.2f}")
+        # volume konfirmasi
+        if _avg_vol > 1 and _last_vol < _avg_vol * 0.70:
+            return True, (f"FAKE BREAKOUT BUY — vol {_last_vol:.0f} "
+                          f"< 70% avg {_avg_vol:.0f} (kurang partisipasi)")
+        return False, f"breakout BUY valid (swing={_swing_hi:.2f}, vol={_last_vol:.0f})"
+
+    else:  # SELL
+        _swing_lo = float(_prev9["Low"].min())
+        if close >= _swing_lo:
+            return False, "bukan breakout SELL — harga masih dalam range"
+        _prev_close = float(df["Close"].iloc[-2])
+        if _prev_close > _swing_lo * 1.0015:
+            return True, (f"FAKE BREAKOUT SELL — close[−1]={_prev_close:.2f} "
+                          f"masih di atas swing {_swing_lo:.2f}")
+        if _avg_vol > 1 and _last_vol < _avg_vol * 0.70:
+            return True, (f"FAKE BREAKOUT SELL — vol {_last_vol:.0f} "
+                          f"< 70% avg {_avg_vol:.0f} (kurang partisipasi)")
+        return False, f"breakout SELL valid (swing={_swing_lo:.2f}, vol={_last_vol:.0f})"
+
+
+# ─────────────────────────────────────────────
 # TP / SL CALCULATION
 # ─────────────────────────────────────────────
 
@@ -1089,6 +1185,95 @@ def _make_decision(df: pd.DataFrame, row: pd.Series, close: float,
             return "WAIT", reasons, news_contribution, filters
     filters["no_trade_zone"] = "OK — level jelas ✓"
 
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 7 — Volatility Filter (Upgrade 4)
+    # ATR terlalu rendah = market sepi, spread lebih berdampak, sinyal palsu
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    from config import MIN_ATR
+    if MIN_ATR > 0 and atr < MIN_ATR:
+        filters["volatility"] = f"LOW ATR={atr:.2f} < {MIN_ATR} — market sepi → NO TRADE"
+        reasons.append((0, f"Volatility filter: ATR {atr:.2f} < min {MIN_ATR}"))
+        return "WAIT", reasons, news_contribution, filters
+    filters["volatility"] = f"ATR={atr:.2f} ✓"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 8 — Session Filter Pro (Upgrade 6)
+    # XAUUSD paling aktif dan reliable saat London & New York session
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    from config import SESSION_FILTER, LONDON_OPEN_UTC, LONDON_CLOSE_UTC, NY_OPEN_UTC, NY_CLOSE_UTC
+    if SESSION_FILTER:
+        from datetime import datetime as _dt2, timezone as _tz2
+        _utc_h     = _dt2.now(tz=_tz2.utc).hour
+        _in_london = LONDON_OPEN_UTC <= _utc_h < LONDON_CLOSE_UTC
+        _in_ny     = NY_OPEN_UTC     <= _utc_h < NY_CLOSE_UTC
+        if not (_in_london or _in_ny):
+            _sess = ("Asian" if 0 <= _utc_h < 7 else "Off-Hours")
+            filters["session"] = f"NO TRADE — {_sess} session (UTC {_utc_h:02d}:xx, bukan London/NY)"
+            reasons.append((0, f"Session filter: UTC {_utc_h:02d}:xx bukan London/NY — WAIT"))
+            return "WAIT", reasons, news_contribution, filters
+        _sess_label = ("London+NY Overlap" if (_in_london and _in_ny) else
+                       ("London" if _in_london else "New York"))
+        filters["session"] = f"{_sess_label} session (UTC {_utc_h:02d}:xx) ✓"
+    else:
+        filters["session"] = "session filter OFF"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 9 — Entry Zone / Sniper Entry (Upgrade 2)
+    # BUY hanya jika dekat support, SELL hanya jika dekat resistance
+    # Mencegah entry di tengah nowhere (RR buruk)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    from config import ENTRY_ZONE_PCT
+    if ENTRY_ZONE_PCT > 0:
+        _entry_tol = atr * ENTRY_ZONE_PCT
+        if raw_dir == "BUY" and _sup:
+            _near_sup = [s for s in _sup if 0 < close - s <= _entry_tol]
+            if not _near_sup:
+                _nearest = min(_sup, key=lambda s: abs(close - s))
+                _dist    = abs(close - _nearest)
+                filters["entry_zone"] = (f"NO ENTRY — BUY jauh dari support "
+                                         f"(nearest={_nearest:.2f}, dist={_dist:.2f}, tol={_entry_tol:.2f})")
+                reasons.append((0, f"Entry Zone: support {_nearest:.2f} terlalu jauh ({_dist:.2f} > {_entry_tol:.2f})"))
+                return "WAIT", reasons, news_contribution, filters
+            filters["entry_zone"] = (f"BUY near support {_near_sup[0]:.2f} "
+                                     f"(dist={close-_near_sup[0]:.2f} <= {_entry_tol:.2f}) ✓")
+        elif raw_dir == "SELL" and _res:
+            _above_res = [r for r in _res if r > close]
+            _near_res  = [r for r in _above_res if r - close <= _entry_tol]
+            if not _near_res:
+                _nearest = min(_above_res, key=lambda r: r - close) if _above_res else None
+                _dist    = (_nearest - close) if _nearest else 9999
+                filters["entry_zone"] = (f"NO ENTRY — SELL jauh dari resistance "
+                                         f"(nearest={_nearest:.2f}, dist={_dist:.2f}, tol={_entry_tol:.2f})"
+                                         if _nearest else "NO ENTRY — tidak ada resistance di atas")
+                reasons.append((0, f"Entry Zone: resistance terlalu jauh ({_dist:.2f} > {_entry_tol:.2f})"))
+                return "WAIT", reasons, news_contribution, filters
+            filters["entry_zone"] = (f"SELL near resistance {_near_res[0]:.2f} "
+                                     f"(dist={_near_res[0]-close:.2f} <= {_entry_tol:.2f}) ✓")
+        else:
+            filters["entry_zone"] = "entry zone: no levels found — skip check"
+    else:
+        filters["entry_zone"] = "entry zone filter OFF"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 10 — Market Structure Real (Upgrade 9)
+    # Verifikasi HH/HL untuk BUY, LL/LH untuk SELL
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _ok_struct, _struct_msg = _check_market_structure(df, raw_dir, lookback=20)
+    filters["market_structure"] = _struct_msg
+    if not _ok_struct:
+        reasons.append((0, f"Market Structure: {_struct_msg}"))
+        return "WAIT", reasons, news_contribution, filters
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HARD FILTER 11 — Fake Breakout Detector (Upgrade)
+    # Breakout tanpa volume = stop hunt / liquidity grab → WAIT
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _is_fake, _fake_msg = _check_fake_breakout(df, raw_dir, close, atr)
+    filters["fake_breakout"] = _fake_msg
+    if _is_fake:
+        reasons.append((0, f"Fake Breakout: {_fake_msg}"))
+        return "WAIT", reasons, news_contribution, filters
+
     reasons.append((+1 if raw_dir == "BUY" else -1, f"Semua hard-filter passed → {raw_dir}"))
     return raw_dir, reasons, news_contribution, filters
 
@@ -1191,6 +1376,34 @@ def generate_signal(df: pd.DataFrame,
     total_str   = (s_rdiv + s_mch + s_sma + s_fib + s_st + s_psar + s_ichi) * str_mult
     max_trad    = sum(WEIGHTS[k] for k in ["rsi","macd","ema_cross","bb","stoch","adx","candle"])
 
+    # ── Session Behavior Adaptive (Upgrade) ──────────────────────────
+    # London  → boost trend-following (supertrend/ichimoku/structure)
+    # New York → boost breakout (SMC/volume/momentum)
+    # Overlap  → boost keduanya
+    from datetime import datetime as _dt_sb, timezone as _tz_sb
+    from config import (LONDON_OPEN_UTC as _LON_O, LONDON_CLOSE_UTC as _LON_C,
+                        NY_OPEN_UTC     as _NY_O,  NY_CLOSE_UTC      as _NY_C)
+    _utc_h_sb  = _dt_sb.now(tz=_tz_sb.utc).hour
+    _in_lon_sb = _LON_O <= _utc_h_sb < _LON_C
+    _in_ny_sb  = _NY_O  <= _utc_h_sb < _NY_C
+
+    if _in_lon_sb and _in_ny_sb:
+        _session_name_sb = "London+NY Overlap"
+        total_str *= 1.15   # kedua strategi aktif
+        total_smc *= 1.15
+        total_vol *= 1.10
+    elif _in_lon_sb:
+        _session_name_sb = "London"
+        total_str *= 1.25   # trend-follow: supertrend, ichimoku, structure
+        total_vol *= 1.10
+    elif _in_ny_sb:
+        _session_name_sb = "New York"
+        total_smc *= 1.25   # breakout: SMC, order block, liquidity
+        total_vol *= 1.20   # volume + momentum lebih penting di NY
+    else:
+        _session_name_sb = "Other"   # outside London/NY → session filter sudah blok di Hard Filter 8
+    filters["session_strategy"] = f"Strategy: {_session_name_sb}"
+
     # ── EMA short-trend alignment dampening ──────────────────────────
     # Jika EMA20 > EMA50 (short uptrend): MACD & RSI sering SELL palsu
     # saat koreksi kecil → dampen kontribusi mereka
@@ -1246,6 +1459,56 @@ def generate_signal(df: pd.DataFrame,
         normalized_trad + total_vol + total_smc + total_str + memory_contribution,
         2
     )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ANTI-CONFLICT ENGINE
+    # Hitung vote bullish vs bearish dari semua indikator.
+    # Jika > 40% indikator berlawanan dengan arah sinyal → WAIT
+    # Bot tidak boleh "memilih" ketika pasar sendiri bingung.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if direction in ("BUY", "SELL"):
+        _all_scores = [
+            # Traditional
+            trad_scores[0],   # rsi
+            trad_scores[1],   # macd
+            trad_scores[2],   # stoch
+            trad_scores[4],   # candle
+            trad_scores[5],   # ema
+            # Volume + structure
+            s_obv, s_vwap, s_mfi,
+            # Trend
+            s_st, s_ichi, s_psar,
+            # Structure
+            s_mch, s_rdiv,
+            # SMC
+            s_smc,
+        ]
+        _nonzero = [s for s in _all_scores if s != 0]
+        if _nonzero:
+            _bull_v = sum(1 for s in _nonzero if s > 0)
+            _bear_v = sum(1 for s in _nonzero if s < 0)
+            _total_v = _bull_v + _bear_v
+            _minority = min(_bull_v, _bear_v)
+            _conflict_ratio = _minority / _total_v if _total_v > 0 else 0
+
+            filters["conflict"] = (
+                f"Bull:{_bull_v} Bear:{_bear_v} "
+                f"conflict={_conflict_ratio:.0%}"
+            )
+
+            # Blok jika > 40% indikator berlawanan dengan arah
+            if direction == "BUY" and _bear_v / _total_v > 0.40:
+                direction = "WAIT"
+                reasons.append((0, f"Anti-Conflict: {_bear_v}/{_total_v} indikator BEARISH "
+                                   f"— terlalu banyak konflik untuk BUY"))
+                filters["conflict"] += " → BLOK"
+            elif direction == "SELL" and _bull_v / _total_v > 0.40:
+                direction = "WAIT"
+                reasons.append((0, f"Anti-Conflict: {_bull_v}/{_total_v} indikator BULLISH "
+                                   f"— terlalu banyak konflik untuk SELL"))
+                filters["conflict"] += " → BLOK"
+            else:
+                filters["conflict"] += " ✓"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # SIMPLIFIED CONFIDENCE SCORING (max 6 here, +1 ML in bot.py = 7)
@@ -1305,10 +1568,13 @@ def generate_signal(df: pd.DataFrame,
             reasons.append((0, f"Confidence {confidence}/6 ✓ ({' '.join(conf_notes)})"))
 
     # Score floor — pakai adaptive threshold jika tersedia
+    # Cap: adaptive tidak boleh melebihi MIN_SIGNAL_SCORE + 1.5
+    # (mencegah adaptive memblok semua sinyal saat win rate rendah)
     _min_score = MIN_SIGNAL_SCORE
     try:
         from ml.adaptive import get_learner
-        _min_score = get_learner().min_score
+        _adaptive_score = get_learner().min_score
+        _min_score = min(_adaptive_score, MIN_SIGNAL_SCORE + 1.5)
     except Exception:
         pass
     if direction in ("BUY", "SELL") and abs(final_score) < _min_score:
@@ -1417,10 +1683,63 @@ def generate_signal(df: pd.DataFrame,
     _market_state = ("TREND" if _adx_val >= ADX_TREND_MIN else
                      "UNCLEAR" if _adx_val >= 20 else "RANGE")
 
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # SIGNAL STRENGTH SCORING (Upgrade)
+    # Mengukur kekuatan setup: 8 poin maks
+    #   STRONG (6+) → entry langsung (no delay)
+    #   MEDIUM (4-5) → tunggu 1 candle konfirmasi
+    #   WEAK   (<4) → skip entry
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _spts = 0
+    if direction in ("BUY", "SELL"):
+        # +2: EMA fully stacked + ADX >= 30 (tren kuat)
+        _e9_s  = float(row.get(f"ema_{EMA_FAST}",  close))
+        _e20_s = float(row.get(f"ema_{EMA_SLOW}",  close))
+        _e50_s = float(row.get(f"ema_{EMA_TREND}", close))
+        _ema_stack = ((direction == "BUY"  and _e9_s > _e20_s > _e50_s) or
+                      (direction == "SELL" and _e9_s < _e20_s < _e50_s))
+        if _adx_val >= 30 and _ema_stack:
+            _spts += 2
+        elif _adx_val >= 25 or _ema_stack:
+            _spts += 1
+
+        # +2: Liquidity sweep / SMC event kuat
+        if (s_smc > 1.5 and direction == "BUY") or (s_smc < -1.5 and direction == "SELL"):
+            _spts += 2
+        elif abs(s_smc) > 0.5:
+            _spts += 1
+
+        # +2: Confidence (candle + struktur sudah konfirmasi)
+        if confidence >= 5:
+            _spts += 2
+        elif confidence >= 4:
+            _spts += 1
+
+        # +1: Near key level (Fibonacci atau RSI Divergence)
+        _fib_ok_s  = (s_fib  > 0 and direction == "BUY") or (s_fib  < 0 and direction == "SELL")
+        _rdiv_ok_s = (s_rdiv > 0 and direction == "BUY") or (s_rdiv < 0 and direction == "SELL")
+        if _fib_ok_s or _rdiv_ok_s:
+            _spts += 1
+
+        # +1: RSI momentum (RSI > 55 BUY / < 45 SELL)
+        _rsi_s = float(row.get("rsi", 50))
+        if (direction == "BUY" and _rsi_s > 55) or (direction == "SELL" and _rsi_s < 45):
+            _spts += 1
+
+    if _spts >= 6:
+        signal_strength = "STRONG"
+    elif _spts >= 4:
+        signal_strength = "MEDIUM"
+    else:
+        signal_strength = "WEAK"
+    filters["signal_strength"] = f"{signal_strength} ({_spts}/8 pts)"
+
     return {
         "direction":        direction,
         "score":            final_score,
         "confidence":       confidence,           # 0-6 quality score
+        "signal_strength":  signal_strength,      # STRONG / MEDIUM / WEAK
+        "strength_pts":     _spts,                # raw points 0-8
         "market_state":     _market_state,        # TREND / UNCLEAR / RANGE
         "score_technical":  round(normalized_trad, 2),
         "score_volume":     round(total_vol, 2),
@@ -1460,22 +1779,26 @@ def print_filter_log(filters: dict, direction: str) -> None:
     print(f"\n  {BOLD}[FILTER LOG]{RESET}  Final: {dc}{BOLD}{direction}{RESET}")
 
     icons = {
-        "market_state":   "  ",
-        "trend":          "  ",
-        "news":           "  ",
-        "momentum":       "  ",
-        "candle_pattern": "  ",
-        "no_trade_zone":  "  ",
-        "confidence":     "  ",
-        "rr":             "  ",
-        "regime":         "  ",
-        "regime_score":   "  ",
-        "candle_trend":   "  ",
+        "market_state":    "  ",
+        "trend":           "  ",
+        "news":            "  ",
+        "momentum":        "  ",
+        "candle_pattern":  "  ",
+        "no_trade_zone":   "  ",
+        "confidence":      "  ",
+        "rr":              "  ",
+        "regime":          "  ",
+        "regime_score":    "  ",
+        "candle_trend":    "  ",
+        "signal_strength": "⚡ ",
+        "session_strategy":"  ",
+        "fake_breakout":   "  ",
     }
     for key, val in filters.items():
         icon   = icons.get(key, "  ")
         passed = not any(x in str(val) for x in
                          ["SKIP", "WEAK", "REJECT", "NO TRADE", "CANCEL", "COUNTER",
-                          "belum", "tunggu", "berlawanan", "FLAT"])
-        color  = GREEN if passed else (RED if "NO TRADE" in str(val) or "REJECT" in str(val) else YELLOW)
-        print(f"    {icon} {key:<16}: {color}{val}{RESET}")
+                          "FAKE", "belum", "tunggu", "berlawanan", "FLAT"])
+        color  = GREEN if passed else (RED if "NO TRADE" in str(val) or "REJECT" in str(val)
+                                       or "FAKE" in str(val) else YELLOW)
+        print(f"    {icon} {key:<18}: {color}{val}{RESET}")

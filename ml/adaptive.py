@@ -66,9 +66,9 @@ _DEFAULT_STATE = {
     # Signal source performance: {"#1-Rule+ML": {"win": 3, "loss": 1}, ...}
     "source_hits":      {},
 
-    # Dynamic threshold state
-    "base_min_score":   5.0,
-    "current_min_score": 5.0,
+    # Dynamic threshold state — base diambil dari config MIN_SIGNAL_SCORE
+    "base_min_score":   3.0,
+    "current_min_score": 3.0,
     "score_adjustments": [],     # log riwayat adjustment
 
     # Recent trade window (untuk evaluasi)
@@ -133,6 +133,12 @@ class AdaptiveLearner:
             return
 
         is_win = result == "WIN"
+
+        # ── Guard: skip duplikat ticket (sync bisa panggil 2x) ───────────────
+        existing_tickets = {t["ticket"] for t in self.state["recent_trades"]}
+        if ticket in existing_tickets:
+            return   # sudah tercatat, skip
+
         self.state["total_trades"] += 1
         self.state["trades_since_retrain"] += 1
 
@@ -226,7 +232,9 @@ class AdaptiveLearner:
         else:
             return  # 45-65% — tidak perlu adjust
 
-        new_score = round(max(base - 1.0, min(base + 3.0, current + delta)), 2)
+        # Cap: tidak boleh lebih dari base+1.5 atau kurang dari base-0.5
+        # Mencegah threshold naik terlalu tinggi dan memblok semua sinyal
+        new_score = round(max(base - 0.5, min(base + 1.5, current + delta)), 2)
         if new_score == current:
             return
 
@@ -269,6 +277,44 @@ class AdaptiveLearner:
             elif acc < 0.50:
                 multipliers[ind] = 0.9
         return multipliers
+
+    # ── Performance Mode (Upgrade) ────────────────────────────────────────────
+
+    def get_performance_mode(self) -> str:
+        """
+        Return mode berdasarkan win rate 10 trade terakhir:
+          CONSERVATIVE  (<40%)  : kurangi frekuensi, tunggu setup terbaik
+          NORMAL        (40-65%): default behavior
+          AGGRESSIVE    (>65%)  : boleh lebih aktif, setup lebih banyak diterima
+        """
+        recents = self.state["recent_trades"][-10:]
+        if len(recents) < 5:
+            return "NORMAL"
+        wins = sum(1 for t in recents if t["result"] == "WIN")
+        wr   = wins / len(recents)
+        if wr < 0.40:
+            return "CONSERVATIVE"
+        if wr > 0.65:
+            return "AGGRESSIVE"
+        return "NORMAL"
+
+    def get_cooldown_mult(self) -> float:
+        """
+        Multiplier untuk TRADE_COOLDOWN_MIN berdasarkan mode.
+        CONSERVATIVE: 2.0x — cooldown lebih panjang (kurangi frekuensi)
+        AGGRESSIVE:   0.7x — cooldown lebih pendek (lebih aktif)
+        """
+        return {"CONSERVATIVE": 2.0, "NORMAL": 1.0, "AGGRESSIVE": 0.7}.get(
+            self.get_performance_mode(), 1.0)
+
+    def get_max_trades_mult(self) -> float:
+        """
+        Multiplier untuk MAX_TRADES_PER_HOUR.
+        CONSERVATIVE: 0.5x (max 1 trade/jam saat jelek)
+        AGGRESSIVE:   1.5x (max 3 trade/jam saat bagus)
+        """
+        return {"CONSERVATIVE": 0.5, "NORMAL": 1.0, "AGGRESSIVE": 1.5}.get(
+            self.get_performance_mode(), 1.0)
 
     # ── Dynamic score threshold ───────────────────────────────────────────────
 

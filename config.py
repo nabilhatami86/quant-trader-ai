@@ -144,6 +144,33 @@ ATR_MULTIPLIER_SL = 1.0    # SL = 1x ATR
 ATR_MULTIPLIER_TP = 10.0   # TP = 10x ATR  →  RR 1:10
 MIN_RR_RATIO      = 5.0    # tolak sinyal jika RR < nilai ini
 
+# ── Upgrade 2: Entry Sniper ────────────────────────────────────────────────
+ENTRY_ZONE_PCT        = 3.0    # ATR multiplier: BUY hanya jika support dalam 3x ATR di bawah
+                               # SELL hanya jika resistance dalam 3x ATR di atas
+                               # Set 0 untuk disable
+
+# ── Upgrade 4: Volatility Filter ──────────────────────────────────────────
+MIN_ATR               = 2.0    # XAUUSD 5m: skip jika ATR < 2 (market terlalu sepi)
+MAX_SPREAD_PIPS       = 5.0    # blok order jika spread > 5 pips (normal XAUUSD 1-2)
+
+# ── Upgrade 6: Session Filter Pro ─────────────────────────────────────────
+SESSION_FILTER        = True   # hanya trade saat London & New York session (UTC)
+LONDON_OPEN_UTC       = 7      # 07:00 UTC = 14:00 WIB
+LONDON_CLOSE_UTC      = 16     # 16:00 UTC = 23:00 WIB
+NY_OPEN_UTC           = 12     # 12:00 UTC = 19:00 WIB
+NY_CLOSE_UTC          = 21     # 21:00 UTC = 04:00 WIB (+1)
+
+# ── Upgrade 3: Confirmation Delay ─────────────────────────────────────────
+CONFIRM_DELAY_ENABLED = True   # tunggu konfirmasi 1 candle sebelum entry
+
+# ── Upgrade 8: Loss Control System ────────────────────────────────────────
+LOSS_STREAK_PAUSE     = 3      # pause trading setelah N loss beruntun
+LOSS_STREAK_MIN       = 60     # durasi pause (menit) setelah loss streak
+
+# ── Upgrade 7: Trade Management Intelligence ──────────────────────────────
+PROFIT_LOCK_PCT       = 0.5    # lock profit (SL ke entry) saat floating >= 50% jarak TP
+REVERSAL_CLOSE        = True   # tutup posisi profitable saat signal berbalik
+
 # Breakeven
 BREAKEVEN_ENABLED = True
 BREAKEVEN_TRIGGER = 1.0
@@ -207,3 +234,8 @@ REAL_ATR_TP     = 10.0   # TP = 10x ATR
 REAL_MAX_DAILY_LOSS   = 5.0   # stop trading jika rugi kumulatif hari ini >= $5
 REAL_MAX_FLOATING_USD = 3.0   # stop jika floating loss >= -$3
 REAL_SL_COOLDOWN      = 3     # tunggu N siklus setelah SL kena sebelum trade lagi
+
+# ── Risk Control Final (semua mode, bukan hanya REAL) ─────────────────────────
+# Batas berdasarkan % balance — lebih aman dari nominal karena skala dengan akun
+DAILY_LOSS_PCT   = 3.0   # stop hari ini jika rugi >= 3% balance  (contoh: $60 → stop di -$1.8)
+WEEKLY_LOSS_PCT  = 6.0   # pause minggu ini jika rugi >= 6% balance (contoh: $60 → pause di -$3.6)

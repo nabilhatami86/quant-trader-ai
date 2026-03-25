@@ -935,6 +935,8 @@ class SignalExecutor:
         self._sl_cooldown        = 0
         self._daily_loss         = 0.0
         self._daily_date         = None
+        self._weekly_loss        = 0.0    # akumulasi loss minggu ini
+        self._weekly_date        = None   # tanggal awal minggu saat ini
         self._known_tickets: set = set()   # tiket yang sudah kita catat OPEN
         self._timeframe          = ""      # diisi dari luar agar log_entry ada TF
         # Anti-overtrading state
@@ -943,17 +945,80 @@ class SignalExecutor:
         self._trades_this_hour   = []      # list epoch seconds trade dalam jam ini
         self._trades_today       = 0       # counter trade hari ini
         self._trades_today_date  = None    # tanggal counter di atas
+        # Loss Control System (Upgrade 8)
+        self._loss_streak        = 0       # counter loss beruntun
+        self._paused_until       = 0.0     # epoch saat pause berakhir
+        # Confirmation Delay (Upgrade 3)
+        self._pending_signal     = {}      # {"direction": "BUY", "time": epoch}
 
     def should_trade(self, signal: dict, ml_pred: dict) -> bool:
         direction = signal.get("direction", "WAIT")
 
         if direction == "WAIT":
+            # Clear pending signal when market goes WAIT
+            self._pending_signal = {}
             return False
+
+        # ══════════════════════════════════════════════════════════════════
+        # LOSS CONTROL SYSTEM (Upgrade 8)
+        # ══════════════════════════════════════════════════════════════════
+        import time as _time
+        _now_check = _time.time()
+        if self._paused_until > _now_check:
+            _remaining_min = int((self._paused_until - _now_check) / 60)
+            print(f"  [LOSS CTRL] Trading dijeda {_remaining_min} menit lagi "
+                  f"(loss streak {self._loss_streak}x — cooling down)")
+            return False
+
+        # ══════════════════════════════════════════════════════════════════
+        # ADAPTIVE ENTRY TIMING (Upgrade)
+        # STRONG  → entry langsung (no delay)
+        # MEDIUM  → tunggu 1 candle konfirmasi (anti false signal)
+        # WEAK    → skip entry
+        # ══════════════════════════════════════════════════════════════════
+        try:
+            from config import CONFIRM_DELAY_ENABLED
+            if CONFIRM_DELAY_ENABLED:
+                _strength = signal.get("signal_strength", "MEDIUM")
+                _spts     = signal.get("strength_pts", 0)
+
+                if _strength == "STRONG":
+                    # Setup sangat kuat → entry langsung, no delay
+                    self._pending_signal = {}
+                    print(f"  [ENTRY] {direction} STRONG ({_spts}/8 pts) → entry langsung ⚡")
+                    # fallthrough ke anti-overtrading guards
+
+                elif _strength == "MEDIUM":
+                    # Setup cukup → tunggu 1 candle konfirmasi
+                    _tf_sec = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(
+                        getattr(self, "_timeframe", "5m"), 300)
+                    _pend = self._pending_signal
+                    if _pend.get("direction") == direction:
+                        _elapsed = _now_check - _pend.get("time", 0)
+                        if _elapsed >= _tf_sec:
+                            self._pending_signal = {}   # konfirmasi OK, lanjut
+                            print(f"  [ENTRY] {direction} MEDIUM — konfirmasi 1 candle OK ✓")
+                        else:
+                            _rem = int(_tf_sec - _elapsed)
+                            print(f"  [ENTRY] {direction} MEDIUM ({_spts}/8 pts) — tunggu {_rem}s lagi")
+                            return False
+                    else:
+                        self._pending_signal = {"direction": direction, "time": _now_check}
+                        print(f"  [ENTRY] {direction} MEDIUM ({_spts}/8 pts) — pending, tunggu 1 candle")
+                        return False
+
+                else:
+                    # WEAK setup → skip
+                    self._pending_signal = {}
+                    print(f"  [ENTRY] {direction} WEAK ({_spts}/8 pts) — setup terlalu lemah, skip")
+                    return False
+
+        except Exception:
+            pass
 
         # ══════════════════════════════════════════════════════════════════
         # ANTI-OVERTRADING GUARDS (berlaku semua mode)
         # ══════════════════════════════════════════════════════════════════
-        import time as _time
         import datetime as _dt
         from config import (TRADE_COOLDOWN_MIN, SL_COOLDOWN_MIN,
                             MAX_TRADES_PER_HOUR, MAX_DAILY_TRADES)
@@ -981,11 +1046,51 @@ class SignalExecutor:
                       f"(SL terakhir {sl_elapsed_min:.0f} menit yang lalu)")
                 return False
 
+        # ── Performance Mode: adjust cooldown & max trades ───────────────
+        _cooldown_min    = TRADE_COOLDOWN_MIN
+        _max_trades_hour = MAX_TRADES_PER_HOUR
+        try:
+            from ml.adaptive import get_learner as _gl
+            _lrn = _gl()
+            _perf_mode = _lrn.get_performance_mode()
+            _cooldown_min    = round(TRADE_COOLDOWN_MIN  * _lrn.get_cooldown_mult())
+            _max_trades_hour = max(1, int(MAX_TRADES_PER_HOUR * _lrn.get_max_trades_mult()))
+            if _perf_mode != "NORMAL":
+                print(f"  [PERF] Mode: {_perf_mode} → "
+                      f"cooldown={_cooldown_min}m, max={_max_trades_hour}/jam")
+        except Exception:
+            pass
+
+        # ── Daily / Weekly Loss % limit (semua mode) ──────────────────────
+        try:
+            from config import DAILY_LOSS_PCT, WEEKLY_LOSS_PCT
+            import datetime as _dt_risk
+            _balance = self.account.get("balance", 0) if hasattr(self, "account") else 0
+            if _balance > 0:
+                _daily_pct = getattr(self, "_daily_loss", 0.0) / _balance * 100
+                if _daily_pct >= DAILY_LOSS_PCT:
+                    print(f"  [RISK] STOP — daily loss {_daily_pct:.1f}% "
+                          f">= limit {DAILY_LOSS_PCT}% (${_balance * DAILY_LOSS_PCT/100:.2f})")
+                    return False
+                # Weekly reset + check
+                _today = _dt_risk.date.today()
+                _week0 = _today - _dt_risk.timedelta(days=_today.weekday())
+                if not self._weekly_date or self._weekly_date != _week0:
+                    self._weekly_date = _week0
+                    self._weekly_loss = 0.0
+                _weekly_pct = self._weekly_loss / _balance * 100
+                if _weekly_pct >= WEEKLY_LOSS_PCT:
+                    print(f"  [RISK] PAUSE — weekly loss {_weekly_pct:.1f}% "
+                          f">= limit {WEEKLY_LOSS_PCT}% (${_balance * WEEKLY_LOSS_PCT/100:.2f})")
+                    return False
+        except Exception:
+            pass
+
         # ── Trade cooldown (jeda minimum antar trade) ─────────────────────
         if self._last_trade_time > 0:
             elapsed_min = (now_ts - self._last_trade_time) / 60
-            if elapsed_min < TRADE_COOLDOWN_MIN:
-                remaining = int(TRADE_COOLDOWN_MIN - elapsed_min)
+            if elapsed_min < _cooldown_min:
+                remaining = int(_cooldown_min - elapsed_min)
                 print(f"  [GUARD] Trade Cooldown — tunggu {remaining} menit lagi "
                       f"(trade terakhir {elapsed_min:.0f} menit yang lalu)")
                 return False
@@ -994,7 +1099,7 @@ class SignalExecutor:
         one_hour_ago = now_ts - 3600
         self._trades_this_hour = [t for t in self._trades_this_hour
                                   if t > one_hour_ago]
-        if len(self._trades_this_hour) >= MAX_TRADES_PER_HOUR:
+        if len(self._trades_this_hour) >= _max_trades_hour:
             print(f"  [GUARD] Max trade/jam tercapai: "
                   f"{len(self._trades_this_hour)}/{MAX_TRADES_PER_HOUR} "
                   f"dalam 60 menit terakhir")
@@ -1700,15 +1805,42 @@ class SignalExecutor:
 
             result = "WIN" if pnl > 0 else ("LOSS" if pnl < 0 else "MANUAL")
 
+            # ── Loss Control System: update streak (Upgrade 8) ───────────────
+            try:
+                from config import LOSS_STREAK_PAUSE, LOSS_STREAK_MIN
+                if result == "WIN":
+                    if self._loss_streak > 0:
+                        print(f"  [LOSS CTRL] WIN — loss streak reset ({self._loss_streak} → 0)")
+                    self._loss_streak = 0
+                    self._paused_until = 0.0   # cancel any active pause
+                elif result == "LOSS":
+                    self._loss_streak += 1
+                    if self._loss_streak >= LOSS_STREAK_PAUSE:
+                        self._paused_until = time.time() + LOSS_STREAK_MIN * 60
+                        print(f"\n  [LOSS CTRL] {self._loss_streak}x LOSS BERUNTUN — "
+                              f"trading DIJEDA {LOSS_STREAK_MIN} menit!\n")
+            except Exception:
+                pass
+
             # ── Catat SL time untuk cooldown ─────────────────────────────────
             is_sl_hit = (pnl < 0 and ("sl" in note.lower() or note == "auto-close"))
             if is_sl_hit:
                 self._last_sl_time  = time.time()
                 self._last_trade_time = time.time()   # reset trade cooldown juga
-                # Update daily loss
+
+            # Update daily/weekly loss untuk semua trade yang rugi
+            if pnl < 0:
                 if not hasattr(self, "_daily_loss"):
                     self._daily_loss = 0.0
                 self._daily_loss += abs(pnl)
+                # Weekly loss tracking
+                import datetime as _dt_wk
+                _today_wk = _dt_wk.date.today()
+                _week0_wk = _today_wk - _dt_wk.timedelta(days=_today_wk.weekday())
+                if not self._weekly_date or self._weekly_date != _week0_wk:
+                    self._weekly_date = _week0_wk
+                    self._weekly_loss = 0.0
+                self._weekly_loss += abs(pnl)
 
             # Update CSV journal
             try:
@@ -1809,16 +1941,26 @@ class SignalExecutor:
     def manage_positions(self, signal: dict, df=None) -> None:
         direction = signal.get("direction", "WAIT")
 
+        # Reversal close: hanya tutup posisi yang PROFIT jika sinyal berbalik (Upgrade 7)
+        try:
+            from config import REVERSAL_CLOSE
+        except Exception:
+            REVERSAL_CLOSE = True
         for pos in self.mt5.get_positions(self.symbol):
             if (pos["direction"] == "BUY"  and direction == "SELL") or \
                (pos["direction"] == "SELL" and direction == "BUY"):
-                print(f"[~] Sinyal berbalik - menutup posisi #{pos['ticket']}")
-                self.mt5.close_position(pos["ticket"])
+                profit = pos.get("profit", 0) or 0
+                if REVERSAL_CLOSE and profit > 0:
+                    print(f"  [RevClose] #{pos['ticket']} {pos['direction']} "
+                          f"— sinyal berbalik, profit ${profit:.2f} → tutup sekarang")
+                    self.mt5.close_position(pos["ticket"])
+                # Jika rugi: biarkan SL yang menutup (jangan cut loss manual)
 
         self.check_abnormal_movement(df)
         self.check_sl_risk()
         self.check_partial_tp()
         self.check_breakeven()
+        self.check_profit_lock()        # Upgrade 7: lock profit di 50% TP
         self.sync_manual_positions(signal)
 
         if self.trailing_pips > 0:
@@ -1826,3 +1968,51 @@ class SignalExecutor:
             if all_pos:
                 self.mt5.update_trailing_stop(self.symbol, self.trailing_pips,
                                               include_manual=True)
+
+    def check_profit_lock(self) -> None:
+        """
+        Lock profit: geser SL ke entry+buffer saat floating profit >= PROFIT_LOCK_PCT % dari TP.
+        Upgrade 7 — Trade Management Intelligence.
+        Contoh: TP = entry + 100 pips, PROFIT_LOCK_PCT=0.5 → lock saat profit >= 50 pips.
+        """
+        try:
+            from config import PROFIT_LOCK_PCT, BREAKEVEN_BUFFER
+            if not PROFIT_LOCK_PCT or not MT5_AVAILABLE:
+                return
+            positions = self.mt5.get_positions(self.symbol)
+            if not positions:
+                return
+            tick = mt5.symbol_info_tick(
+                self.symbol if not self.symbol.endswith("m") else self.symbol)
+            if not tick:
+                return
+            bid, ask = tick.bid, tick.ask
+            for pos in positions:
+                sl  = pos.get("sl", 0) or 0
+                tp  = pos.get("tp", 0) or 0
+                ep  = pos.get("entry_price", 0) or 0
+                drn = pos.get("direction", "")
+                tkt = pos.get("ticket", 0)
+                if not (tp and ep):
+                    continue
+                if drn == "BUY":
+                    cur     = bid
+                    tp_dist = tp - ep
+                    cur_prft = cur - ep
+                    lock_sl  = ep + BREAKEVEN_BUFFER
+                    already_locked = sl >= lock_sl - 0.001
+                else:
+                    cur     = ask
+                    tp_dist = ep - tp
+                    cur_prft = ep - cur
+                    lock_sl  = ep - BREAKEVEN_BUFFER
+                    already_locked = (sl != 0 and sl <= lock_sl + 0.001)
+                if tp_dist <= 0 or cur_prft <= 0 or already_locked:
+                    continue
+                pct = cur_prft / tp_dist
+                if pct >= PROFIT_LOCK_PCT:
+                    self.mt5.modify_position(tkt, sl=round(lock_sl, 5), tp=tp)
+                    print(f"  [ProfitLock] #{tkt} {drn}: SL -> {lock_sl:.5f} "
+                          f"({pct:.0%} of TP reached)")
+        except Exception:
+            pass
