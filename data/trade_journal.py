@@ -258,7 +258,7 @@ def _merge_with_db(symbol: str = "", limit: int = 30) -> pd.DataFrame:
         return df_db.head(limit)
 
 
-def print_stats(symbol: str = "", timeframe: str = "") -> None:
+def print_stats(symbol: str = "", timeframe: str = "", daily_info: dict = None) -> None:
     GREEN  = "\033[92m"
     RED    = "\033[91m"
     YELLOW = "\033[93m"
@@ -268,7 +268,7 @@ def print_stats(symbol: str = "", timeframe: str = "") -> None:
     DIM    = "\033[2m"
 
     # ── Ambil data gabungan DB + CSV ──────────────────────────────────────
-    all_trades = _merge_with_db(symbol, limit=50)
+    all_trades = _merge_with_db(symbol, limit=500)
 
     if all_trades.empty:
         print(f"  [Journal] Belum ada trade tercatat.")
@@ -312,57 +312,32 @@ def print_stats(symbol: str = "", timeframe: str = "") -> None:
     print(f"  Best Trade  : {GREEN}${max_win:+.2f}{RESET}  |  "
           f"Worst    : {RED}${max_loss:+.2f}{RESET}")
 
-    # ── Breakdown LOSS trades ─────────────────────────────────────────────
-    loss_trades = closed[closed["result"] == "LOSS"].copy()
-    loss_pnl    = pd.to_numeric(loss_trades["pnl"], errors="coerce").fillna(0)
-    total_loss  = round(loss_pnl.sum(), 2)
 
-    if not loss_trades.empty:
-        print(f"\n  {RED}{BOLD}LOSS TRADES ({losses} trade) — Total Rugi: ${total_loss:+.2f}{RESET}")
-        print(f"  {'-'*82}")
-        print(f"  {'#Ticket':<13} {'Dir':<5} {'Entry':>10} {'Exit':>10} "
-              f"{'Lot':>5}  {'P&L':>8}  {'Waktu Entry':<20}")
-        print(f"  {'-'*82}")
-        for _, row in loss_trades.iterrows():
-            pnl_v = float(pd.to_numeric(row.get("pnl", ""), errors="coerce") or 0)
-            ep    = pd.to_numeric(row.get("entry_price", 0), errors="coerce") or 0
-            xp    = pd.to_numeric(row.get("exit_price", ""), errors="coerce")
-            xp_s  = f"{float(xp):.2f}" if not pd.isna(xp) and float(xp) != 0 else "--"
-            lot_v = pd.to_numeric(row.get("lot", 0), errors="coerce") or 0
-            etime = str(row.get("entry_time", ""))[:19]
-            dc    = GREEN if str(row.get("direction","")) == "BUY" else RED
-            print(f"  #{str(row.get('ticket','--')):<12} "
-                  f"{dc}{str(row.get('direction','--')):<4}{RESET} "
-                  f"{float(ep):>10.2f} {xp_s:>10} "
-                  f"{float(lot_v):>5.2f}  "
-                  f"{RED}${pnl_v:>+7.2f}{RESET}  "
-                  f"{DIM}{etime}{RESET}")
-
-    # ── Tabel semua trade terakhir (max 10) ───────────────────────────────
-    recent_closed = closed.sort_values("entry_time", ascending=False).head(10)
-    if not recent_closed.empty:
-        print(f"\n  {BOLD}10 Trade Terakhir (closed):{RESET}")
-        print(f"  {'#Ticket':<13} {'Dir':<5} {'Entry':>10} {'Exit':>10} "
-              f"{'Lot':>5}  {'P&L':>8}  {'Hasil':<8}  Catatan")
-        print(f"  {'-'*82}")
-        for _, row in recent_closed.iterrows():
-            res   = str(row.get("result", ""))
-            pnl_v = pd.to_numeric(row.get("pnl", ""), errors="coerce")
-            pnl_v = float(pnl_v) if not pd.isna(pnl_v) else 0.0
-            rc    = GREEN if res == "WIN" else (RED if res == "LOSS" else YELLOW)
-            pc    = GREEN if pnl_v >= 0 else RED
-            dc    = GREEN if str(row.get("direction","")) == "BUY" else RED
-            ep    = pd.to_numeric(row.get("entry_price", 0), errors="coerce") or 0
-            xp    = pd.to_numeric(row.get("exit_price", ""), errors="coerce")
-            xp_s  = f"{float(xp):.2f}" if not pd.isna(xp) and float(xp) != 0 else "--"
-            note  = str(row.get("note", "") or row.get("source", ""))[:18]
-            lot_v = pd.to_numeric(row.get("lot", 0), errors="coerce") or 0
-            print(f"  #{str(row.get('ticket','--')):<12} "
-                  f"{dc}{str(row.get('direction','--')):<4}{RESET} "
-                  f"{float(ep):>10.2f} {xp_s:>10} "
-                  f"{float(lot_v):>5.2f}  "
-                  f"{pc}${pnl_v:>+7.2f}{RESET}  "
-                  f"{rc}{res:<8}{RESET}  "
-                  f"{DIM}{note}{RESET}")
+    # ── Daily balance & profit progress ──────────────────────────────────
+    if daily_info:
+        start_bal  = daily_info.get("start_balance", 0.0)
+        daily_pnl  = daily_info.get("daily_profit", 0.0)
+        daily_limit= daily_info.get("daily_limit", 0.0)
+        if start_bal > 0:
+            pct_now    = daily_pnl / start_bal * 100
+            try:
+                from config import REAL_DAILY_LIMIT_PCT
+                pct_target = REAL_DAILY_LIMIT_PCT * 100
+            except Exception:
+                pct_target = daily_limit / start_bal * 100 if start_bal else 100.0
+            pnl_color  = GREEN if daily_pnl >= 0 else RED
+            target_bal = start_bal + daily_limit
+            if pct_now >= 0:
+                bar_fill = int(min(pct_now / pct_target * 20, 20))
+                bar      = "#" * bar_fill + "-" * (20 - bar_fill)
+                bar_str  = f"[{bar}] {pct_now:+.1f}% / {pct_target:.0f}%"
+            else:
+                bar_fill = int(min(abs(pct_now) / pct_target * 20, 20))
+                bar      = "!" * bar_fill + "-" * (20 - bar_fill)
+                bar_str  = f"[{bar}] {pct_now:+.1f}% / {pct_target:.0f}%"
+            print(f"\n  {BOLD}Daily Progress:{RESET}")
+            print(f"  Saldo Awal  : {BOLD}${start_bal:.2f}{RESET}  →  Target: ${target_bal:.2f}")
+            print(f"  Net Hari ini: {pnl_color}{BOLD}${daily_pnl:+.2f}  ({pct_now:+.1f}%){RESET}")
+            print(f"  {pnl_color}{bar_str}{RESET}")
 
     print(f"  {sep52}")

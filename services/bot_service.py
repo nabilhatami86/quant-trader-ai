@@ -43,7 +43,7 @@ class BotService:
         mt5_connector=None,
         executor=None,
     ) -> None:
-        from bot import TradingBot
+        from backend.bot import TradingBot
 
         self.bot = TradingBot(
             symbol=symbol,
@@ -93,8 +93,9 @@ class BotService:
                     self.bot.fetch_news()
                     news_date = date.today()
 
-                # Jalankan analisis lengkap persis seperti main.py --live
-                success, result = run_analysis(self.bot, executor=self.executor)
+                # Jalankan analisis — lock agar run_once() tidak tabrakan
+                with self._lock:
+                    success, result = run_analysis(self.bot, executor=self.executor)
 
                 if success and result:
                     with self._lock:
@@ -143,7 +144,8 @@ class BotService:
             return {"error": "Bot belum diinisialisasi"}
         try:
             from main import run_analysis
-            success, result = run_analysis(self.bot, executor=self.executor)
+            with self._lock:
+                success, result = run_analysis(self.bot, executor=self.executor)
             if not success or result is None:
                 return {"error": "Gagal load data atau analisis"}
             with self._lock:

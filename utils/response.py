@@ -1,5 +1,5 @@
 from typing import Any
-from schemas.common import SuccessResponse, ErrorResponse
+from api.schemas.common import SuccessResponse, ErrorResponse
 
 
 def ok(message: str = "OK", data: Any = None) -> dict:

@@ -43,11 +43,11 @@ import sys
 import os
 
 from config import *
-from bot import TradingBot, fetch_data
+from backend.bot import TradingBot, fetch_data
 from backtest.engine import run_backtest, print_backtest_report
-from analysis.indicators import add_all_indicators
-from broker.mt5_connector import MT5Connector, SignalExecutor, MT5_AVAILABLE
-from broker.mt4_bridge import MT4Bridge
+from ai.indicators import add_all_indicators
+from backend.broker.mt5_connector import MT5Connector, SignalExecutor, MT5_AVAILABLE
+from backend.broker.mt4_bridge import MT4Bridge
 
 
 def parse_args():
@@ -238,7 +238,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
     bot.print_analysis(result)
 
-    from analysis.signals import print_filter_log
+    from ai.signals import print_filter_log
     sig = result.get("signal", {})
     if sig:
         print_filter_log(sig.get("filters", {}), sig.get("direction", "WAIT"))
@@ -266,8 +266,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             atr   = result.get("atr", close * 0.001) if result.get("atr") else close * 0.001
 
             if sig.get("sl") is None:
-                from analysis.signals import calculate_smart_tp_sl
-                from analysis.indicators import add_all_indicators
+                from ai.signals import calculate_smart_tp_sl
+                from ai.indicators import add_all_indicators
                 tp_sl = calculate_smart_tp_sl(force_dir, close, atr,
                                               bot.df_ind, 5.0)
                 sig = dict(sig)
@@ -304,7 +304,28 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         executor.manage_positions(sig, df=bot.df_ind)
 
         if exec_dir in ("BUY", "SELL"):
+            sig["exec_source"] = exec_src
+            sig["direction"]   = exec_dir
+
+            # Dynamic bulk orders berdasarkan kekuatan sinyal
+            # STRONG + ScalpML confirm → 3 order
+            # STRONG saja → 2 order
+            # lainnya → 1 order
+            _strength  = result.get("signal", {}).get("signal_strength", "")
+            _sc_dir    = result.get("scalping_pred", {}).get("direction", "WAIT")
+            _sc_conf   = result.get("scalping_pred", {}).get("confidence", "LOW")
+            _base_bulk = executor.bulk_orders  # default dari args
+            if _strength == "STRONG" and _sc_dir == exec_dir and _sc_conf == "HIGH":
+                executor.bulk_orders = max(_base_bulk, 5)
+            elif _strength == "STRONG" and _sc_dir == exec_dir and _sc_conf == "MEDIUM":
+                executor.bulk_orders = max(_base_bulk, 3)
+            elif _strength == "STRONG":
+                executor.bulk_orders = max(_base_bulk, 2)
+            else:
+                executor.bulk_orders = _base_bulk
+
             exec_result = executor.execute(sig, ml_pred, news_risk)
+            executor.bulk_orders = _base_bulk  # reset setelah eksekusi
             if exec_result.get("bulk"):
                 pass  # output sudah ditangani di executor.execute()
             elif exec_result.get("success"):
@@ -326,7 +347,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         direction = sig.get("direction", "WAIT")
 
         if direction in ("BUY", "SELL") and news_risk != "HIGH":
-            from broker.mt5_connector import SYMBOL_MAP
+            from backend.broker.mt5_connector import SYMBOL_MAP
             sym = SYMBOL_MAP.get(bot.symbol, bot.symbol)
             mt4.write_signal(
                 direction=direction,
@@ -345,8 +366,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
 def run_backtest_mode(symbol: str, timeframe: str, period: str = None):
     print(f"\n[~] Running backtest for {symbol} ({timeframe})...")
-    from bot import fetch_data
-    from analysis.indicators import add_all_indicators
+    from backend.bot import fetch_data
+    from ai.indicators import add_all_indicators
 
     bt_period = period or BACKTEST_PERIOD
     raw = fetch_data(symbol, timeframe, bt_period)
@@ -417,7 +438,7 @@ def main():
         print(f"[!] Timeframe '{timeframe}' tidak valid. Pilih: {list(TIMEFRAMES.keys())}")
         sys.exit(1)
 
-    from ml.deep_model import TF_AVAILABLE
+    from ai.deep_model import TF_AVAILABLE
     use_lstm = args.lstm
     use_news = not args.no_news
 
@@ -659,7 +680,7 @@ def main():
                     closed_now = executor.sync_closed_positions()
                     if closed_now:
                         try:
-                            from ml.adaptive import get_learner
+                            from ai.adaptive import get_learner
                             from data.trade_journal import JOURNAL_PATH
                             import pandas as _jdf
                             import config as _cfg
@@ -720,7 +741,29 @@ def main():
                             pass
 
                 from data.trade_journal import print_stats
-                print_stats(symbol, timeframe)
+                _daily_info = None
+                if executor:
+                    _start_bal = getattr(executor, "_daily_start_balance", 0.0)
+                    # Fallback: ambil balance dari MT5 jika belum di-set hari ini
+                    if _start_bal == 0.0 and mt5_conn:
+                        try:
+                            _start_bal = mt5_conn.account.get("balance", 0.0) or 0.0
+                            executor._daily_start_balance = _start_bal
+                        except Exception:
+                            pass
+                    # Selalu hitung limit dari config terbaru
+                    try:
+                        from config import REAL_DAILY_LIMIT_PCT
+                        _limit = round(_start_bal * REAL_DAILY_LIMIT_PCT, 2) if _start_bal else 0.0
+                        executor._daily_limit = _limit
+                    except Exception:
+                        _limit = getattr(executor, "_daily_limit", 0.0)
+                    _daily_info = {
+                        "start_balance": round(_start_bal, 2),
+                        "daily_profit" : round(getattr(executor, "_daily_profit", 0.0), 2),
+                        "daily_limit"  : round(_limit, 2),
+                    }
+                print_stats(symbol, timeframe, daily_info=_daily_info)
 
                 # Adaptive report setiap 10 cycle
                 try:
@@ -728,7 +771,7 @@ def main():
                         main._cycle_count = 0
                     main._cycle_count += 1
                     if main._cycle_count % 10 == 0:
-                        from ml.adaptive import get_learner
+                        from ai.adaptive import get_learner
                         get_learner().print_report()
                 except Exception:
                     pass

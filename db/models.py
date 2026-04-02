@@ -74,11 +74,25 @@ class Signal(Base):
     exec_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     news_risk: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
-    # Score breakdown
+    # Score breakdown (semua komponen)
     score_technical: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_smc: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_structure: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_news: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_memory: Mapped[float | None] = mapped_column(Float, nullable=True)
     regime: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+    # Candle info saat sinyal
+    candle_type: Mapped[str | None] = mapped_column(String(10), nullable=True)   # BULLISH/BEARISH
+    candle_pattern: Mapped[str | None] = mapped_column(String(100), nullable=True)  # engulfing, pin bar, dll
+
+    # Session bias HTF
+    session_bias: Mapped[str | None] = mapped_column(String(20), nullable=True)  # BUY/SELL/NEUTRAL
+
+    # Link ke trade (diisi jika sinyal ini menghasilkan order)
+    ticket: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pnl_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # diisi saat trade tutup
 
     # Raw full result (untuk audit)
     raw_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)

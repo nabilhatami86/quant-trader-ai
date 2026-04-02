@@ -1,0 +1,66 @@
+{
+  "symbol": "XAUUSDm",
+  "timeframes": [
+    "M1",
+    "M5"
+  ],
+  "train_candles_m1": 99694,
+  "date_range": "2025-12-16 17:15:00 \u2192 2026-03-31 17:07:00",
+  "tp_usd": 2.0,
+  "sl_usd": 1.0,
+  "lookahead": 10,
+  "spread_filter": 500,
+  "n_features": 50,
+  "best_model": "Stacking(LGB+XGB+ET\u2192LR)",
+  "accuracy": 0.6575053914439039,
+  "conf_accuracy": 0.8288172043010753,
+  "f1_score": 0.5354737772940616,
+  "auc": 0.7280613602018506,
+  "backtest": {
+    "total_trades": 2295,
+    "wins": 1682,
+    "losses": 613,
+    "win_rate_pct": 73.29,
+    "total_pnl_usd": 583376071516885.6,
+    "profit_factor": 4.292,
+    "max_drawdown_pct": 5.95,
+    "final_capital": 583376071517885.6,
+    "return_pct": 58337607151688.56,
+    "avg_win_usd": 452176273765.14,
+    "avg_loss_usd": -289044732391.64
+  },
+  "lgb_params": {
+    "n_estimators": 567,
+    "learning_rate": 0.008244599544611528,
+    "max_depth": 9,
+    "num_leaves": 50,
+    "subsample": 0.7919357779020963,
+    "colsample_bytree": 0.6111803808912171,
+    "min_child_samples": 92,
+    "reg_alpha": 0.015936847132186974,
+    "reg_lambda": 3.747397300489299e-08
+  },
+  "xgb_params": {
+    "n_estimators": 1095,
+    "learning_rate": 0.014434610190247879,
+    "max_depth": 7,
+    "subsample": 0.7280261676059678,
+    "colsample_bytree": 0.5109126733153162,
+    "min_child_weight": 49,
+    "gamma": 7.7513282336111455,
+    "reg_alpha": 2.854239907497756,
+    "reg_lambda": 1.1309571585271483
+  },
+  "top10_features": [
+    "m5_bb_pct",
+    "m5_trend_ema20",
+    "m5_macd",
+    "price_vs_ema21",
+    "macd_signal",
+    "macd",
+    "m5_body",
+    "atr",
+    "atr5",
+    "m5_rsi"
+  ]
+}

@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # ── Security ──────────────────────────────────────────────────
-    API_KEY: str = ""  # kosong = tanpa auth (dev mode)
+    API_KEY: str = ""          # kosong = tanpa auth (dev mode)
+    API_KEY_REQUIRED: bool = False  # True = tolak semua request jika API_KEY kosong
 
     # ── Database (baca dari .env) ─────────────────────────────────
     DB_HOST: str = "localhost"
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     BOT_TIMEFRAME: str = "1h"
     BOT_USE_MT5: bool = False
     BOT_USE_NEWS: bool = True
+    BOT_AI_ENABLED: bool = True   # False = jalankan BE saja tanpa AI/ML
 
     # ── MetaTrader 5 connection ────────────────────────────────────
     MT5_LOGIN: int = 0

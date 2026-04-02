@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-03-25T04:46:49.659437",
+  "generated_at": "2026-04-02T04:28:12.736982",
   "next_open": "Senin",
-  "htf_bias": "SELL",
-  "htf_score": -3.5,
+  "htf_bias": "BUY",
+  "htf_score": 4.5,
   "key_levels": {
-    "resistance": 5128.363,
+    "resistance": 4792.885,
     "support": 4098.357,
-    "mid": 4613.36,
-    "fib382": 4734.90071,
-    "fib618": 4491.81929
+    "mid": 4445.621,
+    "fib382": 4527.5753,
+    "fib618": 4363.6667
   },
   "ml_retrained": true,
-  "min_score": 5.0
+  "min_score": 6.5
 }

@@ -16,7 +16,7 @@ async def run_backtest(
     period: str = "1y",
 ):
     try:
-        from bot import fetch_data
+        from backend.bot import fetch_data
         from backtest.engine import run_backtest as _run
 
         raw = fetch_data(symbol, timeframe, period)

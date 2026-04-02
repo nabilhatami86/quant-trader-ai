@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.deps import get_bot, get_db
 from db.crud.trades import insert_trade
-from schemas.trade import ForceTradeRequest
+from api.schemas.trade import ForceTradeRequest
 from services.bot_service import BotService
 from utils.response import err, ok
 
@@ -36,7 +36,7 @@ async def force_trade(
 
     # Hitung SL/TP jika belum ada
     if not sig.get("sl"):
-        from analysis.signals import calculate_smart_tp_sl
+        from ai.signals import calculate_smart_tp_sl
         tp_sl = calculate_smart_tp_sl(req.direction, close, atr, bot.bot.df_ind, 5.0)
         sl, tp = tp_sl["sl"], tp_sl["tp"]
     else:

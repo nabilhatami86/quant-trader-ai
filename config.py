@@ -1,21 +1,4 @@
-"""
-config.py — Konfigurasi terpusat trading bot XAUUSD (Gold/USD).
-
-Dibagi menjadi 3 bagian:
-  UMUM    : berlaku untuk semua mode (indikator, sinyal, ML, risk)
-  MICRO   : mode akun demo / latihan / modal kecil (--micro)
-  REAL    : mode akun real ~$60 USD, target $15-20/trade (--real)
-
-Catatan kalibrasi (update 2026-03):
-  - ML conf_accuracy aktual ~79% → ML_MIN_CONFIDENT_ACC=75%
-  - ML precision aktual ~68%     → ML_VOTE_THRESHOLD=65%
-  - RSI/MACD diturunkan (1.0) karena terlalu reaktif di M5
-  - Supertrend/Ichimoku dinaikkan (3.5) karena lebih akurat di trending
-  - MIN_SIGNAL_SCORE diturunkan ke 3.0 karena max score lebih kecil setelah
-    bobot dikecilkan; counter-trend gate tetap 2x (6.0)
-"""
-
-# ==============================================================
+#======================================================
 #  UMUM — berlaku untuk semua mode kecuali di-override
 # ==============================================================
 
@@ -111,38 +94,41 @@ WEIGHTS = {
 }
 
 # ML
-ML_ENABLED            = True
+ML_ENABLED            = False  # DINONAKTIFKAN — pakai rule-based saja
 ML_LOOKBACK           = 20
 ML_TRAIN_SPLIT        = 0.8
 ML_MODEL_TYPE         = "ensemble"
 ML_MIN_CONFIDENT_ACC  = 75.0   # ML-Only aktif jika conf_accuracy >= nilai ini
                                # Kalibrasi: model saat ini conf_acc ~79% → threshold 75%
-ML_VOTE_THRESHOLD     = 65     # ML prob% minimum untuk join voting di #1 Rule+ML
-                               # Kalibrasi: model precision ~68% → threshold 65%
+ML_VOTE_THRESHOLD     = 75     # ML prob% minimum untuk join voting di #1 Rule+ML
+                               # Kalibrasi: model precision ~68% → threshold 75%
+                               # (65% terlalu rendah: beberapa sinyal 65-75% masih loss)
 
 # Decision Engine — hard filters
 NEWS_HIGH_BLOCK       = True   # HIGH news event → selalu NO TRADE (terlalu volatile)
 NO_TRADE_ZONE_PCT     = 0.5    # ATR multiplier: jarak "terlalu dekat" support/resistance
 MIN_SIGNAL_SCORE      = 3.0    # recalibrated: RSI+MACD diturunkan → max score lebih kecil
 MIN_QUALITY_SCORE     = 4      # min quality points (max 6): trend+candle+structure+momentum
-MAX_OPEN_POSITIONS    = 1      # blok entry baru kalau posisi >= nilai ini
+MAX_OPEN_POSITIONS    = 5      # max posisi terbuka (bulk order STRONG = 3)
 
 # Anti-Overtrading
-TRADE_COOLDOWN_MIN    = 15     # menit cooldown setelah trade apapun (WIN/LOSS)
-SL_COOLDOWN_MIN       = 30     # menit cooldown ekstra setelah kena SL
-MAX_TRADES_PER_HOUR   = 2      # maksimal N trade per jam (hard cap)
-MAX_DAILY_TRADES      = 8      # stop trading setelah N trade hari ini
+TRADE_COOLDOWN_MIN    = 0      # DINONAKTIFKAN — tidak ada delay antar trade
+SL_COOLDOWN_MIN       = 0      # DINONAKTIFKAN — tidak ada cooldown setelah SL
+MAX_TRADES_PER_HOUR   = 0      # DINONAKTIFKAN — tidak ada batas per jam
+MAX_DAILY_TRADES      = 0      # DINONAKTIFKAN — stop hanya saat target 20% tercapai
 
 # Lot safety cap
 MAX_LOT_SAFE          = 0.03   # batas lot default — naik hanya jika win rate >= 50%
 MAX_LOT_LOSING        = 0.01   # lot diturunkan ke 0.01 saat win rate < 35%
 MIN_SL_PIPS           = 12.0   # SL minimum 12 pips dari entry (noise filter XAUUSD M5)
 
-# SL / TP umum  —  RR 1:10
+# SL / TP umum  —  RR 1:3
+# RR 1:10 terlalu jauh untuk M5: TP jarang tercapai, SL sering kena duluan
+# RR 1:3 lebih realistis: win rate 35% sudah break even, konsisten di M5
 AUTO_TP_SL        = False  # OFF = pakai ATR multiplier di bawah
-ATR_MULTIPLIER_SL = 1.0    # SL = 1x ATR
-ATR_MULTIPLIER_TP = 10.0   # TP = 10x ATR  →  RR 1:10
-MIN_RR_RATIO      = 5.0    # tolak sinyal jika RR < nilai ini
+ATR_MULTIPLIER_SL = 0.2    # SL = 0.2x ATR  →  ~$2-3 di M5 XAUUSD
+ATR_MULTIPLIER_TP = 0.3    # TP = 0.3x ATR  →  ~$3-4 di M5 XAUUSD  (RR 1:1.5)
+MIN_RR_RATIO      = 1.5    # tolak sinyal jika RR < nilai ini
 
 # ── Upgrade 2: Entry Sniper ────────────────────────────────────────────────
 ENTRY_ZONE_PCT        = 3.0    # ATR multiplier: BUY hanya jika support dalam 3x ATR di bawah
@@ -161,11 +147,11 @@ NY_OPEN_UTC           = 12     # 12:00 UTC = 19:00 WIB
 NY_CLOSE_UTC          = 21     # 21:00 UTC = 04:00 WIB (+1)
 
 # ── Upgrade 3: Confirmation Delay ─────────────────────────────────────────
-CONFIRM_DELAY_ENABLED = True   # tunggu konfirmasi 1 candle sebelum entry
+CONFIRM_DELAY_ENABLED = False  # DINONAKTIFKAN — entry langsung tanpa delay
 
 # ── Upgrade 8: Loss Control System ────────────────────────────────────────
-LOSS_STREAK_PAUSE     = 3      # pause trading setelah N loss beruntun
-LOSS_STREAK_MIN       = 60     # durasi pause (menit) setelah loss streak
+LOSS_STREAK_PAUSE     = 0      # DINONAKTIFKAN
+LOSS_STREAK_MIN       = 0      # DINONAKTIFKAN
 
 # ── Upgrade 7: Trade Management Intelligence ──────────────────────────────
 PROFIT_LOCK_PCT       = 0.5    # lock profit (SL ke entry) saat floating >= 50% jarak TP
@@ -211,7 +197,7 @@ MICRO_RISK_PCT   = 0.5
 #  Untuk akun real ~$60 USD, target profit $15-20 per trade
 # ==============================================================
 
-REAL_LOT        = 0.01   # fallback jika auto-lot tidak bisa baca saldo
+REAL_LOT        = 0.01   # lot fixed 0.01
 REAL_MAX_ORDERS = 1      # jumlah order sekaligus per sinyal
 REAL_MAX_STACK  = 3      # maks posisi tumpuk searah (sinyal bagus → pasang lagi)
 REAL_ML_CONF    = 70     # ML wajib setuju minimal 70% → akurasi 91.2%, coverage 55.6%
@@ -222,20 +208,28 @@ REAL_RISK_PCT   = 10.0   # risk 10% balance per trade → lot proporsional ke SL
 # Auto lot — bot baca saldo dan hitung lot otomatis
 # Formula: lot = balance / 10000  (setiap $100 = 0.01 lot)
 # Contoh: $59 → 0.01 | $200 → 0.02 | $500 → 0.05 | $1000 → 0.10 | $5000 → 0.50
-REAL_AUTO_LOT     = True   # True = hitung otomatis, False = pakai REAL_LOT
+REAL_AUTO_LOT     = False  # False = pakai REAL_LOT fixed 0.01
 REAL_AUTO_LOT_MAX = 0.10   # batas maksimal lot
 REAL_AUTO_LOT_MIN = 0.01   # batas minimal lot
 
-# RR 1:10 — SL kecil, TP sangat jauh
-# 1 trade menang = tutup 10 trade rugi
-REAL_ATR_SL     = 1.0    # SL = 1x ATR
-REAL_ATR_TP     = 10.0   # TP = 10x ATR
+# RR 1:3 — SL kecil, TP 3x SL (lebih realistis untuk M5)
+# 1 trade menang = tutup 3 trade rugi → win rate 35% sudah cukup
+REAL_ATR_SL     = 0.2    # SL = 0.2x ATR
+REAL_ATR_TP     = 0.3    # TP = 0.3x ATR  →  RR 1:1.5
 
-REAL_MAX_DAILY_LOSS   = 5.0   # stop trading jika rugi kumulatif hari ini >= $5
-REAL_MAX_FLOATING_USD = 3.0   # stop jika floating loss >= -$3
-REAL_SL_COOLDOWN      = 3     # tunggu N siklus setelah SL kena sebelum trade lagi
+REAL_MAX_FLOATING_USD = 0.0   # DINONAKTIFKAN — tidak stop saat floating loss
+REAL_SL_COOLDOWN      = 0     # DINONAKTIFKAN — tidak ada cooldown setelah SL
+
+# ── Daily Profit/Loss Limit (dinamis, % dari balance awal hari) ───────────────
+# Contoh: balance $500, REAL_DAILY_LIMIT_PCT=0.04 → limit = $20/hari
+# Reset setiap hari baru, nominal dihitung ulang dari balance saat itu
+REAL_DAILY_LIMIT_PCT  = 1.00  # 100% dari balance harian → profit & loss limit
+REAL_MAX_DAILY_PROFIT = 0.0   # (legacy, tidak dipakai — digantikan REAL_DAILY_LIMIT_PCT)
+REAL_MAX_DAILY_LOSS   = 0.0   # (legacy, tidak dipakai — digantikan REAL_DAILY_LIMIT_PCT)
 
 # ── Risk Control Final (semua mode, bukan hanya REAL) ─────────────────────────
 # Batas berdasarkan % balance — lebih aman dari nominal karena skala dengan akun
-DAILY_LOSS_PCT   = 3.0   # stop hari ini jika rugi >= 3% balance  (contoh: $60 → stop di -$1.8)
-WEEKLY_LOSS_PCT  = 6.0   # pause minggu ini jika rugi >= 6% balance (contoh: $60 → pause di -$3.6)
+DAILY_LOSS_PCT      = 0.0   # DINONAKTIFKAN — tidak stop saat rugi % balance
+WEEKLY_LOSS_PCT     = 0.0   # DINONAKTIFKAN — tidak pause minggu ini saat rugi
+DAILY_LOSS_HARD_USD = 0.0   # DINONAKTIFKAN — tidak ada hard stop nominal
+FORCE_TRADE_MAX_LOT = 0.03  # lot maksimum yang diizinkan meski via force-trade

@@ -4,8 +4,14 @@ Backtest Engine - Simulasi trading historis
 import pandas as pd
 import numpy as np
 from config import *
-from analysis.indicators import add_all_indicators
-from analysis.signals import generate_signal
+from ai.indicators import add_all_indicators
+from ai.signals import generate_signal
+
+# ── Backtest cost assumptions (sesuaikan dengan broker) ──────────────────────
+BACKTEST_LOT        = 0.01   # lot size per trade
+BACKTEST_PIP_USD    = 0.10   # nilai 1 pip dalam USD untuk lot 0.01 (XAUUSD)
+BACKTEST_SPREAD_USD = 0.35   # biaya spread sekali masuk untuk lot 0.01
+BACKTEST_COMMISSION = 0.07   # komisi round-trip untuk lot 0.01
 
 
 def run_backtest(df_raw: pd.DataFrame, symbol: str = "") -> dict:
@@ -57,11 +63,13 @@ def run_backtest(df_raw: pd.DataFrame, symbol: str = "") -> dict:
                 pnl_pct    = pnl_pips / entry * 100
                 result     = "WIN" if hit_tp else "LOSS"
 
-                # Simulasi PnL sederhana: 1% risk per trade
-                risk_amt = capital * 0.01
-                rr       = ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL
-                pnl_usd  = risk_amt * rr if hit_tp else -risk_amt
-                capital += pnl_usd
+                # PnL berbasis harga real + spread + komisi
+                lot       = BACKTEST_LOT
+                scale     = lot / 0.01
+                pip_val   = BACKTEST_PIP_USD * scale
+                cost      = (BACKTEST_SPREAD_USD + BACKTEST_COMMISSION) * scale
+                pnl_usd   = pnl_pips * pip_val - cost
+                capital  += pnl_usd
 
                 trades.append({
                     "open":       trade_entry["open_idx"],
@@ -92,7 +100,8 @@ def run_backtest(df_raw: pd.DataFrame, symbol: str = "") -> dict:
     total_pnl  = df_trades["pnl_usd"].sum()
     avg_win    = wins["pnl_usd"].mean() if len(wins) else 0
     avg_loss   = losses["pnl_usd"].mean() if len(losses) else 0
-    profit_factor = abs(wins["pnl_usd"].sum() / losses["pnl_usd"].sum()) if len(losses) else float("inf")
+    loss_sum      = losses["pnl_usd"].sum() if len(losses) else 0
+    profit_factor = abs(wins["pnl_usd"].sum() / loss_sum) if loss_sum != 0 else float("inf")
 
     # Max drawdown
     capital_curve = [INITIAL_CAPITAL] + list(df_trades["capital"])
