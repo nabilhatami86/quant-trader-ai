@@ -373,7 +373,7 @@ def _fetch_htf(symbol: str, timeframe: str, count: int,
         return None
     try:
         import MetaTrader5 as mt5
-        from broker.mt5_connector import SYMBOL_MAP
+        from backend.broker.mt5_connector import SYMBOL_MAP
 
         TF_MAP = {
             "1h": mt5.TIMEFRAME_H1,
@@ -463,7 +463,7 @@ def is_market_closed(mt5_conn=None) -> bool:
     if mt5_conn is not None:
         try:
             import MetaTrader5 as mt5
-            from broker.mt5_connector import SYMBOL_MAP
+            from backend.broker.mt5_connector import SYMBOL_MAP
             sym = SYMBOL_MAP.get("XAUUSD", "XAUUSDm")
             tick = mt5.symbol_info_tick(sym)
             if tick is None:
@@ -538,7 +538,7 @@ def run_market_close_deep_analysis(symbol: str, bot=None,
     # ── 3. Adaptive learning report ───────────────────────────────────────────
     print(f"\n  {BOLD}[3/4] Adaptive Learning Report...{RESET}")
     try:
-        from ml.adaptive import get_learner
+        from ai.adaptive import get_learner
         learner = get_learner()
         learner.print_report()
         results["adaptive"] = {
@@ -560,7 +560,7 @@ def run_market_close_deep_analysis(symbol: str, bot=None,
                 print(f"    {GREEN}[OK] ML retrained dengan data terbaru{RESET}")
 
                 # Reset retrain counter
-                from ml.adaptive import get_learner
+                from ai.adaptive import get_learner
                 get_learner().mark_retrained()
         except Exception as e:
             print(f"    [!] ML retrain gagal: {e}")

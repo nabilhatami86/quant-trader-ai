@@ -1,41 +1,40 @@
 {
   "current_bias": {
-    "direction": "NEUTRAL",
-    "strength": "LEMAH",
-    "score": 1.5,
+    "direction": "SELL",
+    "strength": "SEDANG",
+    "score": -2.5,
     "reasons": [
       "H4 trend tidak jelas (EMA mixed)",
-      "RSI H4 66.1 \u2014 momentum bullish",
-      "ADX H4 40.9 \u2014 trend kuat (valid)",
-      "Daily: 2/3 candle terakhir bullish",
-      "Daily: price 4555.27 bawah EMA50 (4947.72)",
-      "Harga di area mid-range 4571.42 \u2014 konsolidasi"
+      "RSI H4 37.1 \u2014 momentum bearish",
+      "ADX H4 28.0 \u2014 trend kuat (valid)",
+      "Daily: 2/3 candle terakhir bearish",
+      "Daily: price 4649.89 bawah EMA50 (4928.73)"
     ],
     "details": {
-      "h4_close": 4555.269,
-      "h4_ema20": 4521.30491,
-      "h4_ema50": 4666.13045,
+      "h4_close": 4649.887,
+      "h4_ema20": 4653.2392,
+      "h4_ema50": 4630.19921,
       "h4_trend": "MIXED",
-      "h4_rsi": 66.1,
-      "h4_adx": 40.9,
+      "h4_rsi": 37.1,
+      "h4_adx": 28.0,
       "h4_structure": {
-        "HH": 4,
+        "HH": 3,
         "HL": 5,
-        "LH": 5,
+        "LH": 6,
         "LL": 4
       },
-      "daily_bull_3": 2,
-      "daily_bear_3": 1,
-      "daily_ema50": 4947.72184,
-      "swing_high": 5044.474,
-      "swing_low": 4098.357,
-      "mid_level": 4571.4155,
-      "final_score": 1.5
+      "daily_bull_3": 1,
+      "daily_bear_3": 2,
+      "daily_ema50": 4928.7267,
+      "swing_high": 4800.288,
+      "swing_low": 4350.95,
+      "mid_level": 4575.619,
+      "final_score": -2.5
     },
-    "h4_price": 4555.269,
-    "timestamp": "2026-03-25T23:45:52.924009",
-    "session": "London",
-    "next_session": "New York"
+    "h4_price": 4649.887,
+    "timestamp": "2026-04-07T04:28:08.724534",
+    "session": "Weekly",
+    "next_session": "Senin Open"
   },
   "history": [
     {
@@ -57,6 +56,87 @@
       "next_session": "New York",
       "direction": "NEUTRAL",
       "score": 1.5
+    },
+    {
+      "timestamp": "2026-03-30T15:46:31.164428",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "NEUTRAL",
+      "score": 1.1
+    },
+    {
+      "timestamp": "2026-03-31T15:45:08.282066",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "NEUTRAL",
+      "score": 1.1
+    },
+    {
+      "timestamp": "2026-03-31T23:46:19.584501",
+      "session": "London",
+      "next_session": "New York",
+      "direction": "NEUTRAL",
+      "score": 1.1
+    },
+    {
+      "timestamp": "2026-04-01T15:58:47.756941",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "BUY",
+      "score": 4.5
+    },
+    {
+      "timestamp": "2026-04-01T23:45:00.266451",
+      "session": "London",
+      "next_session": "New York",
+      "direction": "BUY",
+      "score": 4.5
+    },
+    {
+      "timestamp": "2026-04-02T04:27:59.683035",
+      "session": "Weekly",
+      "direction": "BUY",
+      "score": 4.5
+    },
+    {
+      "timestamp": "2026-04-02T15:45:14.048527",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "BUY",
+      "score": 3.0
+    },
+    {
+      "timestamp": "2026-04-02T23:45:39.771586",
+      "session": "London",
+      "next_session": "New York",
+      "direction": "BUY",
+      "score": 3.5
+    },
+    {
+      "timestamp": "2026-04-03T04:28:54.033161",
+      "session": "Weekly",
+      "direction": "BUY",
+      "score": 3.5
+    },
+    {
+      "timestamp": "2026-04-06T15:45:49.784507",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "NEUTRAL",
+      "score": 0.5
+    },
+    {
+      "timestamp": "2026-04-06T23:46:40.953048",
+      "session": "London",
+      "next_session": "New York",
+      "direction": "NEUTRAL",
+      "score": -0.5
+    },
+    {
+      "timestamp": "2026-04-07T04:28:08.724534",
+      "session": "Weekly",
+      "direction": "SELL",
+      "score": -2.5
     }
   ]
 }

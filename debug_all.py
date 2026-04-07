@@ -55,20 +55,20 @@ def section(title):
 section("1. IMPORT & DEPENDENCY CHECK")
 
 modules_to_check = [
-    ("config",                    "config.py"),
-    ("analysis.indicators",       "analysis/indicators.py"),
-    ("analysis.signals",          "analysis/signals.py"),
-    ("data.candle_log",           "data/candle_log.py"),
-    ("data.trade_journal",        "data/trade_journal.py"),
-    ("data.news_filter",          "data/news_filter.py"),
-    ("data.session_bias",         "data/session_bias.py"),
-    ("ml.model",                  "ml/model.py"),
-    ("ml.adaptive",               "ml/adaptive.py"),
-    ("ml.news_model",             "ml/news_model.py"),
-    ("services.db_logger",        "services/db_logger.py"),
-    ("broker.mt5_connector",      "broker/mt5_connector.py"),
-    ("bot",                       "bot.py"),
-    ("main",                      "main.py"),
+    ("config",                          "config.py"),
+    ("ai.indicators",                   "ai/indicators.py"),
+    ("ai.signals",                      "ai/signals.py"),
+    ("data.candle_log",                 "data/candle_log.py"),
+    ("data.trade_journal",              "data/trade_journal.py"),
+    ("data.news_filter",                "data/news_filter.py"),
+    ("data.session_bias",               "data/session_bias.py"),
+    ("ai.model",                        "ai/model.py"),
+    ("ai.adaptive",                     "ai/adaptive.py"),
+    ("ai.news_model",                   "ai/news_model.py"),
+    ("services.db_logger",              "services/db_logger.py"),
+    ("backend.broker.mt5_connector",    "backend/broker/mt5_connector.py"),
+    ("backend.bot",                     "backend/bot.py"),
+    ("main",                            "main.py"),
 ]
 
 imported = {}
@@ -171,7 +171,7 @@ section("3. INDICATOR CALCULATION (data sintetis)")
 try:
     import pandas as pd
     import numpy as np
-    from analysis.indicators import add_all_indicators
+    from ai.indicators import add_all_indicators
 
     # Buat data OHLCV sintetis (200 candle, Gold price range)
     np.random.seed(42)
@@ -235,7 +235,7 @@ except Exception as e:
 section("4. SIGNAL GENERATION")
 
 try:
-    from analysis.signals import generate_signal
+    from ai.signals import generate_signal
 
     if df_ind is not None:
         # generate_signal(df, news_bias=None, news_risk="LOW", candle_memory=None)
@@ -296,7 +296,7 @@ except Exception as e:
 section("5. ML MODEL (train + predict)")
 
 try:
-    from ml.model import CandlePredictor
+    from ai.model import CandlePredictor
     import config as cfg_ml
 
     predictor = CandlePredictor(timeframe="5m")
@@ -355,7 +355,7 @@ except Exception as e:
 section("6. ADAPTIVE LEARNER")
 
 try:
-    from ml.adaptive import AdaptiveLearner, get_learner
+    from ai.adaptive import AdaptiveLearner, get_learner
 
     learner = AdaptiveLearner()
     ok("AdaptiveLearner init OK")
@@ -616,7 +616,7 @@ except Exception as e:
 section("12. MT5 CONNECTOR (struktur & logika)")
 
 try:
-    from broker.mt5_connector import MT5Connector, SYMBOL_MAP
+    from backend.broker.mt5_connector import MT5Connector, SYMBOL_MAP
 
     # Test SYMBOL_MAP
     if "XAUUSD" in SYMBOL_MAP:
@@ -637,7 +637,7 @@ try:
 
     # Test should_trade logic kalau punya metode
     # should_trade ada di SignalExecutor, bukan MT5Connector
-    from broker.mt5_connector import SignalExecutor
+    from backend.broker.mt5_connector import SignalExecutor
     if hasattr(SignalExecutor, "should_trade"):
         ok("SignalExecutor.should_trade metode ada")
     else:
@@ -663,7 +663,7 @@ except Exception as e:
 section("13. BOT CLASS (tanpa MT5)")
 
 try:
-    import bot as bot_mod
+    import backend.bot as bot_mod
 
     # Cek kelas/fungsi yang ada
     bot_attrs = [a for a in dir(bot_mod) if not a.startswith("_")]
@@ -711,7 +711,7 @@ except Exception as e:
 section("14. SIGNAL QUALITY CHECKS")
 
 try:
-    from analysis.signals import generate_signal
+    from ai.signals import generate_signal
     import config as cfg_sq
 
     if df_ind is not None and len(df_ind) >= 50:
@@ -765,7 +765,7 @@ except Exception as e:
 section("15. FILE & STATE INTEGRITY")
 
 state_files = [
-    ("ml/adaptive_state.json",          "Adaptive learner state"),
+    ("ai/adaptive_state.json",           "Adaptive learner state"),
     ("data/session_bias_state.json",    "Session bias state"),
     ("data/session_plan.json",          "Pre-session plan"),
     ("data/news_cache",                 "News cache directory"),

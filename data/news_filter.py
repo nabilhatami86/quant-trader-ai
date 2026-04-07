@@ -1007,7 +1007,7 @@ class NewsFilter:
         Dipanggil dari bot setelah load_data() selesai.
         """
         try:
-            from ml.news_model import NewsDirectionModel
+            from ai.news_model import NewsDirectionModel
             if not hasattr(self, "_news_ml") or self._news_ml is None:
                 self._news_ml = NewsDirectionModel(self.symbol)
             result = self._news_ml.train(price_df)
@@ -1031,7 +1031,7 @@ class NewsFilter:
 
         if not result.get("trained"):
             days = result.get("n_days", 0)
-            from ml.news_model import MODEL_MIN_SAMPLES
+            from ai.news_model import MODEL_MIN_SAMPLES
             print(f"  {YELLOW}Cache: {days} hari  (butuh min {MODEL_MIN_SAMPLES}){RESET}  "
                   f"{DIM}— makin lama bot jalan makin akurat{RESET}")
             print(f"  {sep}")

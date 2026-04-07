@@ -26,7 +26,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
 
     if use_mt5:
         try:
-            from broker.mt5_connector import MT5Connector
+            from backend.broker.mt5_connector import MT5Connector
             mt5 = MT5Connector()
             if mt5.connect():
                 count_map = {
@@ -42,7 +42,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
             print(f"[!] MT5 error: {e} — fallback ke Yahoo Finance")
 
     if df_raw is None or (hasattr(df_raw, "empty") and df_raw.empty):
-        from bot import fetch_data
+        from backend.bot import fetch_data
         period_map = {
             "1m": "7d", "5m": "60d", "15m": "60d",
             "1h": "730d", "4h": "730d", "1d": "5y",
@@ -57,7 +57,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
           f"({str(df_raw.index[0])[:10]} → {str(df_raw.index[-1])[:10]})")
 
     # 2. Hitung indikator
-    from analysis.indicators import add_all_indicators
+    from ai.indicators import add_all_indicators
     try:
         df_ind = add_all_indicators(df_raw)
     except Exception as e:

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from core.config import settings
 
@@ -14,6 +15,19 @@ engine = create_async_engine(
     max_overflow=20,
     pool_pre_ping=True,
 )
+
+
+def make_thread_engine():
+    """
+    Engine tanpa connection pool — aman dipakai dari asyncio.run() di background
+    thread (bot_service, db_logger). NullPool tidak menyimpan koneksi antar loop
+    sehingga tidak terjadi 'unknown protocol state' asyncpg.
+    """
+    return create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        poolclass=NullPool,
+    )
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

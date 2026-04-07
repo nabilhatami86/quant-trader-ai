@@ -1,15 +1,33 @@
 import logging
+import threading
+import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.deps import get_bot, get_db
 from db.crud.signals import build_signal_payload, get_recent_signals, insert_signal
-from schemas.signal import SignalHistoryOut, SignalOut
+from api.schemas.signal import SignalHistoryOut, SignalOut
 from services.bot_service import BotService
 from utils.response import err, ok
 
 logger = logging.getLogger("trader_ai.routes.signal")
 router = APIRouter(prefix="/signal", tags=["Signal"])
+
+# ── Rate limiter sederhana (in-memory, per IP) ───────────────────────────────
+_rate_lock    = threading.Lock()
+_rate_buckets: dict = {}
+_RATE_LIMIT   = 5    # maks request per window
+_RATE_WINDOW  = 60.0 # window dalam detik
+
+def _check_rate_limit(client_ip: str) -> bool:
+    now = time.monotonic()
+    with _rate_lock:
+        bucket = _rate_buckets.setdefault(client_ip, [])
+        _rate_buckets[client_ip] = [t for t in bucket if now - t < _RATE_WINDOW]
+        if len(_rate_buckets[client_ip]) >= _RATE_LIMIT:
+            return False
+        _rate_buckets[client_ip].append(now)
+        return True
 
 
 @router.get("", summary="Sinyal terakhir dari bot")
@@ -42,9 +60,17 @@ async def get_current_signal(bot: BotService = Depends(get_bot)):
 
 @router.post("/analyze", summary="Trigger analisis manual (1 siklus)")
 async def trigger_analyze(
+    request: Request,
     bot: BotService = Depends(get_bot),
     db=Depends(get_db),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit: maks {_RATE_LIMIT} request per {int(_RATE_WINDOW)}s",
+        )
+
     result = bot.run_once()
     if "error" in result:
         return err(result["error"])

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from api.deps import get_db
 from db.crud.trades import get_trade_stats, get_trades
-from schemas.trade import TradeOut, TradeStatsOut
+from api.schemas.trade import TradeOut, TradeStatsOut
 
 router = APIRouter(prefix="/journal", tags=["Journal"])
 

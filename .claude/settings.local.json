@@ -11,7 +11,19 @@
       "Bash(python -X utf8 main.py --symbol EURUSD --tf 1d)",
       "Bash(python -X utf8 main.py --symbol GOLD --tf 1d)",
       "Bash(python -X utf8 -c \":*)",
-      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1d --no-news)"
+      "Bash(python -X utf8 main.py --symbol EURUSD --tf 1d --no-news)",
+      "Bash(python -c \":*)",
+      "Bash(find /c/Users/muham/Desktop/trader-ai -type f \\\\\\(-name *.pkl -o -name *.joblib -o -name *.h5 -o -name *train* -o -name *model* \\\\\\))",
+      "Bash(python -c \"import numpy; print\\(''numpy:'', numpy.__version__\\)\")",
+      "Bash(python -c \"import pandas; print\\(''pandas:'', pandas.__version__\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -c \"import numpy; print\\(''py311 numpy:'', numpy.__version__\\)\")",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -c \"import pandas; print\\(''py311 pandas:'', pandas.__version__\\)\")",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -m pip install --upgrade --force-reinstall \"numpy>=1.26,<2.0\" pandas -q)",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -m pip install --upgrade --force-reinstall \"numpy>=1.26,<2.0\" pandas --user -q)",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -m pip install --upgrade --force-reinstall \"numpy>=2.0\" pandas --user -q)",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -c \"import numpy; print\\(''numpy:'', numpy.__version__\\); import pandas; print\\(''pandas:'', pandas.__version__\\); print\\(''OK!''\\)\")",
+      "Bash(\"C:/Users/muham/AppData/Local/Programs/Python/Python311/python.exe\" -c \"import lightgbm; import xgboost; import sklearn; print\\(''lgb:'', lightgbm.__version__\\); print\\(''xgb:'', xgboost.__version__\\); print\\(''sklearn OK''\\)\")"
     ]
   }
 }

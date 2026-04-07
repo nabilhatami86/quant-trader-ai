@@ -27,8 +27,9 @@ Fungsi utama:
   save_bot_stop(symbol, tf)
       Catat event BOT_STOP ke tx_log
 
-  close_trade_in_db(ticket, close_price, pnl, result)
+  close_trade_in_db(ticket, close_price, pnl, result, ...)
       Update tabel trades: set exit_price, pnl, result, closed_at
+      + catat ORDER_CLOSE ke tx_log + update signals.pnl_usd
 
   get_trade_journal_df(symbol, limit) -> DataFrame
       Ambil histori trade dari DB (fallback ke CSV jika DB tidak tersedia)
@@ -41,15 +42,42 @@ Fungsi utama:
 
 Database:
   PostgreSQL via SQLAlchemy async (asyncpg driver)
-  Schema: db/models.py
+  Schema: db/models.py — setiap fungsi buat engine NullPool baru (thread-safe)
   Koneksi: db/database.py (DATABASE_URL dari environment)
   Fallback: CSV journal jika DB tidak tersedia (lihat get_trade_journal_df)
+
+Catatan threading:
+  Semua fungsi async di sini membuat engine NullPool baru via make_thread_engine()
+  sehingga aman dipanggil dari asyncio.run() di background thread tanpa conflict
+  dengan asyncpg connection pool milik FastAPI.
 """
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger("trader_ai.db_logger")
 
+
+# ── Helper: NullPool session — aman dari background thread ────────────────
+
+@asynccontextmanager
+async def _tdb():
+    """
+    Buat sesi DB dengan NullPool engine — tidak ada connection pool sehingga
+    aman dipakai dari asyncio.run() di thread mana pun tanpa conflict asyncpg.
+    """
+    from db.database import make_thread_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    _engine = make_thread_engine()
+    _Session = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with _Session() as db:
+            yield db
+    finally:
+        await _engine.dispose()
+
+
+# ── Save cycle (sinyal + candle + tx_log + order) ──────────────────────────
 
 def save_cycle(result: dict, bot=None, order_result: dict = None) -> None:
     """
@@ -69,17 +97,24 @@ def save_cycle(result: dict, bot=None, order_result: dict = None) -> None:
 
 
 async def _async_save_cycle(result: dict, bot=None, order_result: dict = None) -> None:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.signals import insert_signal, build_signal_payload
     from db.crud.candle_logs import bulk_upsert_candle_logs
     from db.crud.tx_log import log_event
 
+    # Ticket dari order_result (jika sinyal menghasilkan order)
+    _ticket = order_result.get("ticket") if order_result and order_result.get("success") else None
+
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
 
             # ── 1. Simpan sinyal ──────────────────────────────────────
             try:
-                await insert_signal(db, build_signal_payload(result))
+                # Sisipkan last row df_ind agar build_signal_payload bisa
+                # ambil candle_type BULLISH/BEARISH dari data frame
+                if bot and bot.df_ind is not None and not bot.df_ind.empty:
+                    _last = bot.df_ind.iloc[-1]
+                    result["_df_last_row"] = _last.to_dict()
+                await insert_signal(db, build_signal_payload(result, ticket=_ticket))
             except Exception as exc:
                 logger.debug(f"insert_signal: {exc}")
 
@@ -121,20 +156,19 @@ async def _async_save_cycle(result: dict, bot=None, order_result: dict = None) -
                         f"{result.get('final_advice', '')}"
                     ),
                     meta={
-                        # Dari mana sinyal ini berasal
-                        "exec_source":       result.get("exec_source"),         # Rule-Based / ML(70%) / WAIT
-                        "data_source":       result.get("data_source", "MT5"),  # MT5 / Yahoo / TV
-                        # ML info
+                        "exec_source":       result.get("exec_source"),
+                        "data_source":       result.get("data_source", "MT5"),
                         "ml_direction":      result.get("ml_pred", {}).get("direction"),
                         "ml_confidence":     result.get("ml_pred", {}).get("confidence"),
                         "ml_trained_symbol": result.get("ml_pred", {}).get("trained_symbol"),
                         "ml_symbol_match":   result.get("ml_pred", {}).get("symbol_match", True),
-                        # Score breakdown
                         "score_technical":   sig.get("score_technical"),
                         "score_volume":      sig.get("score_volume"),
                         "score_smc":         sig.get("score_smc"),
+                        "score_structure":   sig.get("score_structure"),
+                        "score_news":        sig.get("score_news"),
+                        "score_memory":      sig.get("score_memory"),
                         "regime":            sig.get("regime"),
-                        # Context
                         "news_risk":         result.get("news_risk"),
                         "session":           result.get("session"),
                     },
@@ -181,8 +215,6 @@ async def _async_save_cycle(result: dict, bot=None, order_result: dict = None) -
 
     except Exception as exc:
         logger.debug(f"_async_save_cycle: {exc}")
-    finally:
-        await engine.dispose()
 
 
 def save_order_skip(result: dict, reason: str) -> None:
@@ -194,11 +226,10 @@ def save_order_skip(result: dict, reason: str) -> None:
 
 
 async def _async_log_skip(result: dict, reason: str) -> None:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.tx_log import log_event
     sig = result.get("signal", {})
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             await log_event(
                 db,
                 event_type="ORDER_SKIP",
@@ -208,8 +239,8 @@ async def _async_log_skip(result: dict, reason: str) -> None:
                 price=result.get("close"),
                 message=reason[:255],
             )
-    finally:
-        await engine.dispose()
+    except Exception as exc:
+        logger.debug(f"_async_log_skip: {exc}")
 
 
 def save_candles_batch(df, symbol: str, timeframe: str) -> int:
@@ -227,16 +258,13 @@ def save_candles_batch(df, symbol: str, timeframe: str) -> int:
 
 
 async def _async_save_candles(df, symbol: str, timeframe: str) -> int:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.candles import bulk_upsert_candles
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             return await bulk_upsert_candles(db, symbol, timeframe, df)
     except Exception as exc:
         logger.debug(f"_async_save_candles: {exc}")
         return 0
-    finally:
-        await engine.dispose()
 
 
 def save_candle_logs_batch(df_ind, symbol: str, timeframe: str) -> int:
@@ -254,18 +282,15 @@ def save_candle_logs_batch(df_ind, symbol: str, timeframe: str) -> int:
 
 
 async def _async_save_candle_logs(df_ind, symbol: str, timeframe: str) -> int:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.candle_logs import bulk_upsert_candle_logs
     try:
         df = df_ind.copy()
         df.columns = [c.lower() for c in df.columns]
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             return await bulk_upsert_candle_logs(db, symbol, timeframe, df)
     except Exception as exc:
         logger.debug(f"_async_save_candle_logs: {exc}")
         return 0
-    finally:
-        await engine.dispose()
 
 
 def save_bot_start(symbol: str, timeframe: str, mode: str = "CLI") -> None:
@@ -283,23 +308,26 @@ def save_bot_stop(symbol: str, timeframe: str) -> None:
 
 
 async def _async_bot_event(event_type: str, symbol: str, timeframe: str, msg: str) -> None:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.tx_log import log_event
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             await log_event(db, event_type=event_type, symbol=symbol,
                             timeframe=timeframe, message=msg)
-    finally:
-        await engine.dispose()
+    except Exception as exc:
+        logger.debug(f"_async_bot_event: {exc}")
 
 
 # ── Trade close / journal dari DB ─────────────────────────────────────────
 
 def close_trade_in_db(ticket: int, close_price: float,
-                      pnl_usd: float, result: str, note: str = "") -> bool:
-    """Update trade di DB saat posisi tutup (WIN/LOSS/MANUAL)."""
+                      pnl_usd: float, result: str, note: str = "",
+                      symbol: str = "", timeframe: str = "",
+                      direction: str = "") -> bool:
+    """Update trade di DB saat posisi tutup (WIN/LOSS/MANUAL) + catat ORDER_CLOSE ke tx_log."""
     try:
-        return asyncio.run(_async_close_trade(ticket, close_price, pnl_usd, result, note))
+        return asyncio.run(_async_close_trade(
+            ticket, close_price, pnl_usd, result, note, symbol, timeframe, direction
+        ))
     except RuntimeError:
         return False
     except Exception as exc:
@@ -308,23 +336,64 @@ def close_trade_in_db(ticket: int, close_price: float,
 
 
 async def _async_close_trade(ticket: int, close_price: float,
-                              pnl_usd: float, result: str, note: str) -> bool:
-    from db.database import AsyncSessionLocal, engine
+                              pnl_usd: float, result: str, note: str,
+                              symbol: str, timeframe: str, direction: str) -> bool:
     from db.crud.trades import close_trade
+    from db.crud.tx_log import log_event
+    from db.crud.signals import update_signal_pnl
     try:
-        async with AsyncSessionLocal() as db:
-            return await close_trade(db, ticket, close_price, pnl_usd, result, note)
+        async with _tdb() as db:
+            ok = await close_trade(db, ticket, close_price, pnl_usd, result, note)
+
+            # Catat ORDER_CLOSE ke tx_log
+            try:
+                await log_event(
+                    db,
+                    event_type="ORDER_CLOSE",
+                    symbol=symbol or None,
+                    timeframe=timeframe or None,
+                    direction=direction or None,
+                    price=close_price,
+                    ticket=ticket,
+                    pnl_usd=pnl_usd,
+                    message=f"#{ticket} {result} | {note[:100] if note else ''} | PnL=${pnl_usd:.2f}",
+                )
+            except Exception as exc:
+                logger.debug(f"ORDER_CLOSE tx_log: {exc}")
+
+            # Update pnl_usd di tabel signals yang linked ke ticket ini
+            try:
+                await update_signal_pnl(db, ticket, pnl_usd)
+            except Exception as exc:
+                logger.debug(f"update_signal_pnl: {exc}")
+
+        return ok
     except Exception as exc:
         logger.debug(f"_async_close_trade: {exc}")
         return False
-    finally:
-        await engine.dispose()
+
+
+def update_signal_pnl_in_db(ticket: int, pnl_usd: float) -> bool:
+    """Update pnl_usd di tabel signals yang terkait ticket ini."""
+    try:
+        return asyncio.run(_async_update_signal_pnl(ticket, pnl_usd))
+    except Exception:
+        return False
+
+
+async def _async_update_signal_pnl(ticket: int, pnl_usd: float) -> bool:
+    from db.crud.signals import update_signal_pnl
+    try:
+        async with _tdb() as db:
+            return await update_signal_pnl(db, ticket, pnl_usd)
+    except Exception as exc:
+        logger.debug(f"_async_update_signal_pnl: {exc}")
+        return False
 
 
 def get_trade_journal_df(symbol: str = "", limit: int = 30) -> "pd.DataFrame":
     """Ambil riwayat trade dari DB sebagai DataFrame (DB-first, fallback CSV)."""
     try:
-        import pandas as pd
         return asyncio.run(_async_get_trade_journal(symbol, limit))
     except Exception:
         return _csv_journal_df(symbol, limit)
@@ -332,10 +401,9 @@ def get_trade_journal_df(symbol: str = "", limit: int = 30) -> "pd.DataFrame":
 
 async def _async_get_trade_journal(symbol: str, limit: int) -> "pd.DataFrame":
     import pandas as pd
-    from db.database import AsyncSessionLocal, engine
     from db.crud.trades import get_recent_trades
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             trades = await get_recent_trades(db, symbol, limit)
         if not trades:
             return _csv_journal_df(symbol, limit)
@@ -359,14 +427,13 @@ async def _async_get_trade_journal(symbol: str, limit: int) -> "pd.DataFrame":
                 "note":        "",
             })
         return pd.DataFrame(rows)
-    finally:
-        await engine.dispose()
+    except Exception:
+        return _csv_journal_df(symbol, limit)
 
 
 def _csv_journal_df(symbol: str, limit: int) -> "pd.DataFrame":
     """Fallback: baca dari CSV journal."""
-    import os, pandas as pd
-    from data.trade_journal import JOURNAL_PATH, get_recent_trades as csv_recent
+    from data.trade_journal import get_recent_trades as csv_recent
     return csv_recent(symbol, limit)
 
 
@@ -379,20 +446,20 @@ def get_trade_stats_db(symbol: str = "") -> dict:
 
 
 async def _async_trade_stats(symbol: str) -> dict:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.trades import get_trade_stats
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             return await get_trade_stats(db, symbol or None)
-    finally:
-        await engine.dispose()
+    except Exception:
+        return {}
 
 
 # ── Candle log dari DB ─────────────────────────────────────────────────────
 
 def ensure_outcome_columns() -> None:
     """
-    Tambah kolom outcome & outcome_pct ke tabel candle_logs kalau belum ada.
+    Tambah kolom outcome & outcome_pct ke tabel candle_logs,
+    dan kolom baru ke tabel signals — kalau belum ada.
     Dipanggil sekali saat bot start.
     """
     try:
@@ -402,25 +469,35 @@ def ensure_outcome_columns() -> None:
 
 
 async def _async_ensure_outcome_cols() -> None:
-    from db.database import engine
-    async with engine.begin() as conn:
-        try:
-            await conn.execute(__import__("sqlalchemy").text(
-                "ALTER TABLE candle_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(5);"
-            ))
-            await conn.execute(__import__("sqlalchemy").text(
-                "ALTER TABLE candle_logs ADD COLUMN IF NOT EXISTS outcome_pct FLOAT;"
-            ))
-        except Exception:
-            pass
-    await engine.dispose()
+    import sqlalchemy
+    from db.database import make_thread_engine
+    _engine = make_thread_engine()
+    _text = sqlalchemy.text
+    try:
+        async with _engine.begin() as conn:
+            for sql in [
+                "ALTER TABLE candle_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(5);",
+                "ALTER TABLE candle_logs ADD COLUMN IF NOT EXISTS outcome_pct FLOAT;",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS score_structure FLOAT;",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS score_news FLOAT;",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS score_memory FLOAT;",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS candle_type VARCHAR(10);",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS candle_pattern VARCHAR(100);",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS session_bias VARCHAR(20);",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS ticket INTEGER;",
+                "ALTER TABLE signals ADD COLUMN IF NOT EXISTS pnl_usd FLOAT;",
+            ]:
+                try:
+                    await conn.execute(_text(sql))
+                except Exception:
+                    pass
+    finally:
+        await _engine.dispose()
 
 
 def load_candle_logs_df(symbol: str, timeframe: str, limit: int = 5000) -> "pd.DataFrame":
     """
     Ambil candle_logs dari PostgreSQL sebagai DataFrame.
-    Kolom output sama dengan CSV candle log — bisa langsung dipakai
-    oleh find_similar_candles() dan get_signal_accuracy().
     Fallback ke DataFrame kosong kalau DB tidak tersedia.
     """
     try:
@@ -432,13 +509,13 @@ def load_candle_logs_df(symbol: str, timeframe: str, limit: int = 5000) -> "pd.D
 
 
 async def _async_load_candle_logs_df(symbol: str, timeframe: str, limit: int) -> "pd.DataFrame":
-    from db.database import AsyncSessionLocal, engine
     from db.crud.candle_logs import get_candle_logs_df
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             return await get_candle_logs_df(db, symbol, timeframe, limit)
-    finally:
-        await engine.dispose()
+    except Exception:
+        import pandas as pd
+        return pd.DataFrame()
 
 
 def update_outcomes_in_db(symbol: str, timeframe: str, updates: list) -> int:
@@ -452,10 +529,9 @@ def update_outcomes_in_db(symbol: str, timeframe: str, updates: list) -> int:
 
 
 async def _async_update_outcomes(symbol: str, timeframe: str, updates: list) -> int:
-    from db.database import AsyncSessionLocal, engine
     from db.crud.candle_logs import update_outcomes_batch
     try:
-        async with AsyncSessionLocal() as db:
+        async with _tdb() as db:
             return await update_outcomes_batch(db, symbol, timeframe, updates)
-    finally:
-        await engine.dispose()
+    except Exception:
+        return 0
