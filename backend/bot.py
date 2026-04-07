@@ -106,6 +106,12 @@ class TradingBot:
         self.df_ind        = pd.DataFrame()
         self.df_ind_hist   = pd.DataFrame()
         self.df_m1         = pd.DataFrame()   # M1 candles untuk ScalpingPredictor
+        self.df_h1         = pd.DataFrame()   # H1 candles untuk H1 trend features
+        # ── Signal metrics tracker ────────────────────────────────────────────
+        self._sig_total       = 0    # total sinyal ML (BUY/SELL)
+        self._sig_blocked_h1  = 0    # berapa kali diblok H1 filter
+        self._sig_passed      = 0    # sinyal yang lolos dan masuk order
+        self._sig_log         = []   # log detail per sinyal (max 200)
         self.trained       = False
         self.lstm_trained  = False
         self.train_result  = {}
@@ -137,12 +143,18 @@ class TradingBot:
                     last_ts = raw.index[-1].strftime("%H:%M:%S")
                     print(f"[MT5] {len(raw)} candles  |  candle[-1]: "
                           f"{float(raw['Close'].iloc[-1]):.5f}  @ {last_ts} (LIVE forming)")
-                    # Fetch M1 data untuk ScalpingPredictor
+                    # Fetch M1 dan H1 data untuk ScalpingPredictor
                     if SCALPING_ML_AVAILABLE and self.timeframe != "1m":
                         try:
                             raw_m1 = self.mt5_conn.get_ohlcv(self.symbol, "1m", count=500)
                             if not raw_m1.empty:
                                 self.df_m1 = raw_m1
+                        except Exception:
+                            pass
+                        try:
+                            raw_h1 = self.mt5_conn.get_ohlcv(self.symbol, "1h", count=200)
+                            if not raw_h1.empty:
+                                self.df_h1 = raw_h1
                         except Exception:
                             pass
             else:
@@ -317,7 +329,8 @@ class TradingBot:
                 m5_raw.columns = [c.lower() for c in m5_raw.columns]
                 if 'volume' not in m5_raw.columns:
                     m5_raw['volume'] = 0
-                scalping_pred = _scalping_pred.predict(m5_raw)
+                h1_raw = self.df_h1.copy() if not self.df_h1.empty else None
+                scalping_pred = _scalping_pred.predict(m5_raw, h1_df=h1_raw)
             except Exception as _e:
                 scalping_pred = {}
                 print(f"[ScalpML] predict error: {_e}")
@@ -384,6 +397,39 @@ class TradingBot:
         # ─────────────────────────────────────────────────────────────────
         _sc_thr = _scalping_pred.prob_threshold if _scalping_pred else 0.52
 
+        # ── Trend Filter H1 — hanya trade searah trend kuat ──────────────────
+        _h1_trend = "NEUTRAL"
+        _h1_adx   = 0.0
+        _h1_bull  = False
+        try:
+            from config import TREND_FILTER_ENABLED, TREND_FILTER_MIN_ADX
+            if TREND_FILTER_ENABLED and not self.df_h1.empty:
+                _h1 = self.df_h1.copy()
+                _h1.columns = [c.lower() for c in _h1.columns]
+                _h1c = _h1['close']
+                _h1_ema20 = _h1c.ewm(span=20, adjust=False).mean()
+                _h1_bull  = bool(_h1c.iloc[-1] > _h1_ema20.iloc[-1])
+                # ADX H1
+                _h1_hi = _h1['high']; _h1_lo = _h1['low']
+                _tr = pd.concat([_h1_hi - _h1_lo,
+                                 (_h1_hi - _h1c.shift()).abs(),
+                                 (_h1_lo - _h1c.shift()).abs()], axis=1).max(axis=1)
+                _atr_h1 = _tr.ewm(span=14).mean()
+                _dmp = (_h1_hi - _h1_hi.shift()).clip(lower=0)
+                _dmn = (_h1_lo.shift() - _h1_lo).clip(lower=0)
+                _dip = 100 * _dmp.ewm(span=14).mean() / (_atr_h1 + 1e-9)
+                _din = 100 * _dmn.ewm(span=14).mean() / (_atr_h1 + 1e-9)
+                _dx  = 100 * (_dip - _din).abs() / (_dip + _din + 1e-9)
+                _h1_adx = float(_dx.ewm(span=14).mean().iloc[-1])
+                # ADX > 25 = trend kuat → filter aktif
+                # ADX < 25 = sideways → jangan blok, biarkan ML yang putuskan
+                if _h1_adx >= TREND_FILTER_MIN_ADX:
+                    _h1_trend = "BULL" if _h1_bull else "BEAR"
+                else:
+                    _h1_trend = "SIDEWAYS"
+        except Exception:
+            pass
+
         if _n_open >= MAX_OPEN_POSITIONS:
             exec_direction = "WAIT"
             exec_source    = f"GUARD-MaxPos ({_n_open} open)"
@@ -391,21 +437,74 @@ class TradingBot:
 
         elif sc_dir in ("BUY", "SELL") and sc_prob >= _sc_thr:
             from ai.signals import calculate_smart_tp_sl
-            exec_direction = sc_dir
-            exec_source    = f"ScalpML({sc_conf},{sc_prob:.3f})"
-            priority_num   = 1
-            tp_sl = calculate_smart_tp_sl(
-                exec_direction, close,
-                float(row.get("atr", close * 0.001)),
-                self.df_ind, 5.0
-            )
-            sig = dict(sig)
-            sig["direction"] = exec_direction
-            sig["sl"]        = tp_sl["sl"]
-            sig["tp"]        = tp_sl["tp"]
-            sig["tp_dist"]   = tp_sl["tp_dist"]
-            sig["sl_dist"]   = tp_sl["sl_dist"]
-            sig["rr_ratio"]  = tp_sl["rr"]
+
+            # Hitung metrik sinyal ML
+            self._sig_total += 1
+
+            # ── Cek trend filter H1 ──────────────────────────────────────────
+            _trend_blocked = False
+            _block_reason  = ""
+            if _h1_trend == "BULL" and sc_dir == "SELL":
+                _trend_blocked = True
+                _block_reason  = f"H1_BULL_ADX{_h1_adx:.0f}"
+                print(f"  [TREND] H1 BULLISH kuat (ADX={_h1_adx:.1f}) "
+                      f"— blok SELL (prob={sc_prob:.3f}), tunggu BUY")
+            elif _h1_trend == "BEAR" and sc_dir == "BUY":
+                _trend_blocked = True
+                _block_reason  = f"H1_BEAR_ADX{_h1_adx:.0f}"
+                print(f"  [TREND] H1 BEARISH kuat (ADX={_h1_adx:.1f}) "
+                      f"— blok BUY (prob={sc_prob:.3f}), tunggu SELL")
+
+            # ── Log sinyal untuk evaluasi ────────────────────────────────────
+            import datetime as _dt_log
+            _sig_entry = {
+                "time"      : _dt_log.datetime.now().strftime("%H:%M:%S"),
+                "ml_signal" : sc_dir,
+                "prob"      : round(sc_prob, 4),
+                "h1_trend"  : _h1_trend,
+                "h1_bull"   : int(_h1_bull),
+                "h1_adx"    : round(_h1_adx, 1),
+                "blocked"   : _trend_blocked,
+                "reason"    : _block_reason if _trend_blocked else "PASS",
+            }
+            self._sig_log.append(_sig_entry)
+            if len(self._sig_log) > 200:
+                self._sig_log.pop(0)
+
+            if _trend_blocked:
+                self._sig_blocked_h1 += 1
+                exec_direction = "WAIT"
+                exec_source    = f"TREND-BLOCK({_block_reason})"
+                priority_num   = 0
+
+                # Tampilkan statistik filter jika sudah cukup data
+                _total = self._sig_total
+                _blok  = self._sig_blocked_h1
+                if _total >= 5:
+                    _blok_pct = _blok / _total * 100
+                    print(f"  [FILTER-STAT] {_blok}/{_total} sinyal diblok H1 "
+                          f"({_blok_pct:.0f}%) | "
+                          f"lolos: {_total-_blok} sinyal")
+                    if _blok_pct > 70:
+                        print(f"  [!] Filter terlalu agresif ({_blok_pct:.0f}% diblok) "
+                              f"— pertimbangkan naikkan ADX threshold")
+            else:
+                self._sig_passed += 1
+                exec_direction = sc_dir
+                exec_source    = f"ScalpML({sc_conf},{sc_prob:.3f})+H1={_h1_trend}"
+                priority_num   = 1
+                tp_sl = calculate_smart_tp_sl(
+                    exec_direction, close,
+                    float(row.get("atr", close * 0.001)),
+                    self.df_ind, 5.0
+                )
+                sig = dict(sig)
+                sig["direction"] = exec_direction
+                sig["sl"]        = tp_sl["sl"]
+                sig["tp"]        = tp_sl["tp"]
+                sig["tp_dist"]   = tp_sl["tp_dist"]
+                sig["sl_dist"]   = tp_sl["sl_dist"]
+                sig["rr_ratio"]  = tp_sl["rr"]
 
         else:
             exec_direction = "WAIT"

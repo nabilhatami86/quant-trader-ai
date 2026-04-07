@@ -128,13 +128,13 @@
   "tp_mult": 1.3333333333333333,
   "sl_mult": 1.0,
   "symbol": "XAUUSD",
-  "created_at": "2026-04-07T14:31:07.709193",
-  "auc_test": 0.6731561603382715,
-  "wf_auc_mean": 0.6865589815137797,
+  "created_at": "2026-04-07T14:36:38.310591",
+  "auc_test": 0.6757113880258293,
+  "wf_auc_mean": 0.6869127041702999,
   "backtest_initial_balance": 100.0,
-  "backtest_final_balance": 4115.0,
-  "backtest_profit_usd": 4015.0,
-  "backtest_profit_pct": 4015.0,
-  "backtest_winrate": 65.2,
-  "backtest_trades": 1396
+  "backtest_final_balance": 4203.0,
+  "backtest_profit_usd": 4103.0,
+  "backtest_profit_pct": 4103.0,
+  "backtest_winrate": 65.3,
+  "backtest_trades": 1420
 }

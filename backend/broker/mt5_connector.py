@@ -1100,11 +1100,22 @@ class SignalExecutor:
 
             _daily_limit = getattr(self, "_daily_limit", 0.0)
 
-            # Daily profit limit DINONAKTIFKAN — biarkan jalan sampai market tutup
-            # _dp = getattr(self, "_daily_profit", 0.0)
-            # if _daily_limit > 0 and _dp >= _daily_limit:
-            #     print(f"  [RISK] STOP — profit target tercapai ${_dp:.2f}")
-            #     return False
+            # ── Daily PROFIT target — berhenti jika sudah cukup profit ─────────
+            try:
+                from config import REAL_DAILY_PROFIT_PCT
+                _start_bal = getattr(self, "_daily_start_balance", 0.0)
+                if _start_bal > 0:
+                    _profit_target = round(_start_bal * REAL_DAILY_PROFIT_PCT, 2)
+                    _dp = getattr(self, "_daily_profit", 0.0)
+                    if _profit_target > 0 and _dp >= _profit_target:
+                        print(f"  [PROFIT] TARGET TERCAPAI — profit hari ini ${_dp:.2f} "
+                              f">= target ${_profit_target:.2f} "
+                              f"({REAL_DAILY_PROFIT_PCT*100:.0f}%) — STOP trading, jaga profit!")
+                        return False
+            except Exception:
+                pass
+
+            # Daily loss limit DINONAKTIFKAN — terus trading sampai profit
 
             all_pos = self.mt5.get_all_positions(self.symbol)
 
@@ -1668,11 +1679,30 @@ class SignalExecutor:
                       f"| P&L: ${pnl:+.2f}{RESET}")
 
     def sync_closed_positions(self) -> list[dict]:
-       
+
         if not self.mt5.connected:
             return []
 
-        current_open = {p["ticket"] for p in self.mt5.get_positions(self.symbol)}
+        # Pakai get_all_positions — tangkap SEMUA posisi (bot + manual + magic lain)
+        current_open = {p["ticket"] for p in self.mt5.get_all_positions(self.symbol)}
+
+        # Sinkronkan _known_tickets dari journal — tangkap posisi yang dibuka
+        # sebelum session ini (restart bot, posisi lama, dll)
+        try:
+            import pandas as _pd_sync
+            from data.trade_journal import JOURNAL_PATH
+            import os as _os_sync
+            if _os_sync.path.exists(JOURNAL_PATH):
+                _df_sync = _pd_sync.read_csv(JOURNAL_PATH, dtype=str)
+                _open_in_journal = set(
+                    int(t) for t in _df_sync.loc[
+                        _df_sync["result"] == "OPEN", "ticket"
+                    ].dropna() if str(t).isdigit()
+                )
+                # Masukkan ke _known_tickets agar bisa dideteksi saat tutup
+                self._known_tickets |= _open_in_journal
+        except Exception:
+            pass
 
         # Perbarui _known_tickets dengan posisi yang masih buka
         just_opened  = current_open - self._known_tickets
