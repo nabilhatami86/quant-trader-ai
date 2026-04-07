@@ -1,15 +1,3 @@
-"""
-ai/ml/predictor.py — Load trained M5 scalping model and generate BUY/SELL/WAIT signals.
-
-Model dilatih dari notebook xauusd_scalping_m5.ipynb (M5 only).
-Tidak lagi butuh M1 data.
-
-Usage:
-    from ai.ml import ScalpingPredictor
-    pred = ScalpingPredictor()
-    result = pred.predict(m5_df)
-    # {'direction': 'BUY', 'probability': 0.72, 'confidence': 'HIGH', ...}
-"""
 import numpy as np
 import pandas as pd
 import joblib
@@ -201,6 +189,56 @@ def _add_features(df: pd.DataFrame) -> pd.DataFrame:
         d[f'{col}_lag1'] = d[col].shift(1)
         d[f'{col}_lag2'] = d[col].shift(2)
 
+    # H1 features — default 0, will be filled from h1_df if provided
+    d['h1_bull']  = 0
+    d['h1_rsi']   = 50.0
+    d['h1_align'] = 0
+
+    return d
+
+
+def _add_h1_features(m5_df: pd.DataFrame, h1_df: pd.DataFrame) -> pd.DataFrame:
+    """Merge H1 trend features into M5 DataFrame."""
+    d = m5_df.copy()
+    h = h1_df.copy()
+    h.columns = [c.lower() for c in h.columns]
+
+    # H1 indicators
+    h1_c = h['close']
+    h1_ema20 = h1_c.ewm(span=20, adjust=False).mean()
+    delta = h1_c.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    h1_rsi = 100 - 100 / (1 + gain / (loss + 1e-9))
+
+    h['h1_bull']  = (h1_c > h1_ema20).astype(int)
+    h['h1_rsi']   = h1_rsi
+    h['h1_align'] = ((h['h1_bull'] == 1) & (h1_rsi > 50)).astype(int)
+
+    # Forward-fill H1 values into M5 timestamps
+    h1_feats = h[['h1_bull', 'h1_rsi', 'h1_align']].copy()
+
+    def _strip_tz(idx):
+        idx = pd.to_datetime(idx)
+        if idx.tz is not None:
+            return idx.tz_convert('UTC').tz_localize(None)
+        return idx
+
+    h1_feats.index = _strip_tz(h1_feats.index)
+    h1_feats = h1_feats.sort_index()
+    d.index  = _strip_tz(d.index)
+
+    h1_reset = h1_feats.reset_index()
+    h1_reset.columns = ['ts'] + [c for c in h1_reset.columns[1:]]
+    m5_reset = pd.DataFrame({'ts': d.index})
+
+    merged = pd.merge_asof(m5_reset.sort_values('ts'), h1_reset.sort_values('ts'),
+                           on='ts', direction='backward')
+
+    for col in ['h1_bull', 'h1_rsi', 'h1_align']:
+        if col in merged.columns:
+            d[col] = merged[col].values
+
     return d
 
 
@@ -221,23 +259,30 @@ class ScalpingPredictor:
         self.selector       = bundle['selector']
         self.feature_cols   = bundle['feature_cols']
         self.selected_feats = bundle['selected_feats']
-        self.prob_threshold = bundle.get('prob_threshold', 0.58)
+        # Override threshold ke 0.55 — hanya ambil sinyal yang lebih confident
+        # Model meta simpan 0.50, tapi live WR jelek → naikan threshold
+        self.prob_threshold = max(bundle.get('prob_threshold', 0.55), 0.55)
         self.tp_mult        = bundle.get('tp_mult', 0.35)
         self.sl_mult        = bundle.get('sl_mult', 0.55)
         print(f"[ScalpingPredictor] loaded — {len(self.selected_feats)} features  "
               f"threshold={self.prob_threshold:.2f}")
 
-    def predict(self, m5_df: pd.DataFrame, _m1_df=None) -> dict:
+    def predict(self, m5_df: pd.DataFrame, h1_df: pd.DataFrame = None) -> dict:
         """
         Args:
             m5_df : M5 DataFrame — OHLCV (kolom bisa uppercase atau lowercase)
-            _m1_df: diabaikan (backward compat)
+            h1_df : H1 DataFrame — untuk h1_bull, h1_rsi, h1_align features (opsional)
 
         Returns:
             dict: direction, probability, prob_buy, prob_sell, confidence, sl, tp, rr, close, reason
         """
         try:
             df_feat = _add_features(m5_df)
+            if h1_df is not None and not h1_df.empty:
+                try:
+                    df_feat = _add_h1_features(df_feat, h1_df)
+                except Exception as _h1e:
+                    pass  # H1 merge gagal, gunakan default 0
             row     = df_feat.tail(1).copy()
 
             # Pastikan semua kolom fitur ada

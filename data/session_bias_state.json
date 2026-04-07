@@ -1,40 +1,40 @@
 {
   "current_bias": {
-    "direction": "SELL",
+    "direction": "BUY",
     "strength": "SEDANG",
-    "score": -2.5,
+    "score": 3.5,
     "reasons": [
-      "H4 trend tidak jelas (EMA mixed)",
-      "RSI H4 37.1 \u2014 momentum bearish",
-      "ADX H4 28.0 \u2014 trend kuat (valid)",
-      "Daily: 2/3 candle terakhir bearish",
-      "Daily: price 4649.89 bawah EMA50 (4928.73)"
+      "H4 EMA20>50 + price atas EMA20 (uptrend)",
+      "RSI H4 56.1 \u2014 momentum bullish",
+      "ADX H4 26.8 \u2014 trend kuat (valid)",
+      "Daily: 2/3 candle terakhir bullish",
+      "Daily: price 4684.92 bawah EMA50 (4853.06)"
     ],
     "details": {
-      "h4_close": 4649.887,
-      "h4_ema20": 4653.2392,
-      "h4_ema50": 4630.19921,
-      "h4_trend": "MIXED",
-      "h4_rsi": 37.1,
-      "h4_adx": 28.0,
+      "h4_close": 4684.788,
+      "h4_ema20": 4655.9576,
+      "h4_ema50": 4632.49943,
+      "h4_trend": "BULLISH",
+      "h4_rsi": 56.1,
+      "h4_adx": 26.8,
       "h4_structure": {
-        "HH": 3,
+        "HH": 5,
         "HL": 5,
-        "LH": 6,
+        "LH": 4,
         "LL": 4
       },
-      "daily_bull_3": 1,
-      "daily_bear_3": 2,
-      "daily_ema50": 4928.7267,
+      "daily_bull_3": 2,
+      "daily_bear_3": 1,
+      "daily_ema50": 4853.06083,
       "swing_high": 4800.288,
       "swing_low": 4350.95,
       "mid_level": 4575.619,
-      "final_score": -2.5
+      "final_score": 3.5
     },
-    "h4_price": 4649.887,
-    "timestamp": "2026-04-07T04:28:08.724534",
-    "session": "Weekly",
-    "next_session": "Senin Open"
+    "h4_price": 4684.788,
+    "timestamp": "2026-04-07T15:46:12.812738",
+    "session": "Tokyo",
+    "next_session": "London"
   },
   "history": [
     {
@@ -137,6 +137,13 @@
       "session": "Weekly",
       "direction": "SELL",
       "score": -2.5
+    },
+    {
+      "timestamp": "2026-04-07T15:46:12.812738",
+      "session": "Tokyo",
+      "next_session": "London",
+      "direction": "BUY",
+      "score": 3.5
     }
   ]
 }

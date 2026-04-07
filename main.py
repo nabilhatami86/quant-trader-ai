@@ -856,6 +856,51 @@ def main():
                     }
                 print_stats(symbol, timeframe, daily_info=_daily_info)
 
+                # ── Signal filter metrics ─────────────────────────────────────
+                try:
+                    _sig_total = getattr(bot, "_sig_total", 0)
+                    _sig_blok  = getattr(bot, "_sig_blocked_h1", 0)
+                    _sig_pass  = getattr(bot, "_sig_passed", 0)
+                    if _sig_total > 0:
+                        _blok_pct = _sig_blok / _sig_total * 100
+                        _pass_pct = _sig_pass / _sig_total * 100
+                        # Profit factor dari journal hari ini
+                        _pf_str = ""
+                        try:
+                            import pandas as _pd2
+                            from data.trade_journal import JOURNAL_PATH
+                            import os as _os2
+                            _today_str2 = __import__("datetime").date.today().isoformat()
+                            if _os2.path.exists(JOURNAL_PATH):
+                                _jdf2 = _pd2.read_csv(JOURNAL_PATH, dtype=str)
+                                _td   = _jdf2[_jdf2.get("entry_time", _pd2.Series(dtype=str))
+                                              .str.startswith(_today_str2, na=False)]
+                                if not _td.empty and "pnl" in _td.columns:
+                                    _pnl = _pd2.to_numeric(_td["pnl"], errors="coerce").dropna()
+                                    _gw2 = _pnl[_pnl > 0].sum()
+                                    _gl2 = abs(_pnl[_pnl < 0].sum())
+                                    if _gl2 > 0:
+                                        _pf = _gw2 / _gl2
+                                        _pf_str = f"  Profit Factor: {_pf:.2f}"
+                                        if _pf >= 1.5:
+                                            _pf_str += " [BAGUS]"
+                                        elif _pf >= 1.0:
+                                            _pf_str += " [BEP]"
+                                        else:
+                                            _pf_str += " [PERLU PERBAIKAN]"
+                        except Exception:
+                            pass
+                        print(f"\n  === SIGNAL FILTER STATS ===")
+                        print(f"  ML sinyal masuk : {_sig_total}")
+                        print(f"  Diblok H1 filter: {_sig_blok} ({_blok_pct:.0f}%)"
+                              + (" [TERLALU AGRESIF!]" if _blok_pct > 70 else ""))
+                        print(f"  Lolos ke order  : {_sig_pass} ({_pass_pct:.0f}%)")
+                        if _pf_str:
+                            print(_pf_str)
+                        print(f"  ===========================")
+                except Exception:
+                    pass
+
                 # Adaptive report setiap 10 cycle
                 try:
                     if not hasattr(main, "_cycle_count"):

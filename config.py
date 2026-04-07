@@ -125,14 +125,18 @@ MAX_LOT_SAFE          = 0.03
 MAX_LOT_LOSING        = 0.01
 MIN_SL_PIPS           = 5.0    # SL minimum 5 pips (noise filter)
 
-# SL / TP — fixed pips (lebih predictable dari ATR)
-# Set FIXED_SL_PIPS > 0 untuk pakai fixed, 0 untuk pakai ATR multiplier
-FIXED_SL_PIPS     = 4.0    # SL = 6 pip dari entry   ← ubah di sini
-FIXED_TP_PIPS     = 6.0    # TP = 8 pip dari entry   ← ubah di sini
+# SL / TP — fixed pips
+# MATEMATIKA RISK:
+#   Expected profit = WinRate × TP - (1-WinRate) × SL
+#   Agar profit, butuh: TP/SL >= (1-WR)/WR
+#   Model live WR ~38% → butuh RR minimal 1:1.66
+#   Pakai RR 1:2 (SL=6, TP=12) → aman meski WR turun ke 33%
+FIXED_SL_PIPS     = 6.0    # SL = 6 pip (match training label)   ← ubah di sini
+FIXED_TP_PIPS     = 12.0   # TP = 12 pip → RR 1:2                ← ubah di sini
 AUTO_TP_SL        = False
 ATR_MULTIPLIER_SL = 1.0    # dipakai hanya jika FIXED_SL_PIPS = 0
-ATR_MULTIPLIER_TP = 1.33   # dipakai hanya jika FIXED_TP_PIPS = 0
-MIN_RR_RATIO      = 1.0    # tolak sinyal jika RR < nilai ini
+ATR_MULTIPLIER_TP = 2.0    # dipakai hanya jika FIXED_TP_PIPS = 0
+MIN_RR_RATIO      = 1.8    # tolak sinyal jika RR < 1.8
 
 # Spread filter
 MAX_SPREAD_PIPS       = 1.5    # blok order jika spread > 1.5 pip
@@ -228,16 +232,22 @@ REAL_ATR_TP     = 0.5    # TP = 0.5x ATR  →  RR 1:1
 REAL_MAX_FLOATING_USD = 0.0   # DINONAKTIFKAN — tidak stop saat floating loss
 REAL_SL_COOLDOWN      = 0     # DINONAKTIFKAN — tidak ada cooldown setelah SL
 
-# ── Daily Profit/Loss Limit (dinamis, % dari balance awal hari) ───────────────
-# Contoh: balance $500, REAL_DAILY_LIMIT_PCT=0.04 → limit = $20/hari
-# Reset setiap hari baru, nominal dihitung ulang dari balance saat itu
-REAL_DAILY_LIMIT_PCT  = 0.20  # 20% dari balance harian → profit & loss limit
-REAL_MAX_DAILY_PROFIT = 0.0   # (legacy, tidak dipakai — digantikan REAL_DAILY_LIMIT_PCT)
-REAL_MAX_DAILY_LOSS   = 0.0   # (legacy, tidak dipakai — digantikan REAL_DAILY_LIMIT_PCT)
+# ── Daily Profit/Loss Limit ────────────────────────────────────────────────────
+# Balance $48 → profit target $4.8 (10%), loss limit $2.4 (5%)
+# Bot STOP saat salah satu tercapai — tidak lanjut trading hari itu
+REAL_DAILY_PROFIT_PCT = 0.20  # 20% profit target → bot berhenti, profit terjaga
+REAL_DAILY_LIMIT_PCT  = 0.0   # DINONAKTIFKAN — terus trading sampai profit
+REAL_MAX_DAILY_PROFIT = 0.0   # (legacy, tidak dipakai)
+REAL_MAX_DAILY_LOSS   = 0.0   # (legacy, tidak dipakai)
 
-# ── Risk Control Final (semua mode, bukan hanya REAL) ─────────────────────────
-# Batas berdasarkan % balance — lebih aman dari nominal karena skala dengan akun
-DAILY_LOSS_PCT      = 0.0   # DINONAKTIFKAN — tidak stop saat rugi % balance
-WEEKLY_LOSS_PCT     = 0.0   # DINONAKTIFKAN — tidak pause minggu ini saat rugi
-DAILY_LOSS_HARD_USD = 0.0   # DINONAKTIFKAN — tidak ada hard stop nominal
+# ── Risk Control Final ────────────────────────────────────────────────────────
+DAILY_LOSS_PCT      = 0.0   # DINONAKTIFKAN — terus trading sampai profit
+WEEKLY_LOSS_PCT     = 0.0   # tidak dipakai
+DAILY_LOSS_HARD_USD = 0.0   # tidak dipakai
 FORCE_TRADE_MAX_LOT = 0.03  # lot maksimum yang diizinkan meski via force-trade
+
+# ── Trend Filter ──────────────────────────────────────────────────────────────
+# Hanya trade searah trend H1 — hindari lawan arus
+TREND_FILTER_ENABLED  = True   # aktifkan filter trend H1
+TREND_FILTER_MIN_ADX  = 25     # blok hanya kalau trend kuat (ADX > 25)
+                               # ADX < 25 = sideways, semua arah diizinkan
