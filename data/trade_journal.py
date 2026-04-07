@@ -315,29 +315,39 @@ def print_stats(symbol: str = "", timeframe: str = "", daily_info: dict = None) 
 
     # ── Daily balance & profit progress ──────────────────────────────────
     if daily_info:
-        start_bal  = daily_info.get("start_balance", 0.0)
-        daily_pnl  = daily_info.get("daily_profit", 0.0)
-        daily_limit= daily_info.get("daily_limit", 0.0)
+        start_bal   = daily_info.get("start_balance", 0.0)
+        daily_pnl   = daily_info.get("daily_profit", 0.0)   # net (WIN - LOSS)
+        daily_gross_win  = daily_info.get("daily_gross_win",  0.0)
+        daily_gross_loss = daily_info.get("daily_gross_loss", 0.0)
+        daily_win_cnt    = daily_info.get("daily_win_count",  0)
+        daily_loss_cnt   = daily_info.get("daily_loss_count", 0)
         if start_bal > 0:
             pct_now    = daily_pnl / start_bal * 100
-            try:
-                from config import REAL_DAILY_LIMIT_PCT
-                pct_target = REAL_DAILY_LIMIT_PCT * 100
-            except Exception:
-                pct_target = daily_limit / start_bal * 100 if start_bal else 100.0
             pnl_color  = GREEN if daily_pnl >= 0 else RED
-            target_bal = start_bal + daily_limit
+            cur_bal    = start_bal + daily_pnl
+
+            # Progress bar — arah + atau -
+            pct_target = 20.0   # reference bar 20%
             if pct_now >= 0:
-                bar_fill = int(min(pct_now / pct_target * 20, 20))
+                bar_fill = int(min(abs(pct_now) / pct_target * 20, 20))
                 bar      = "#" * bar_fill + "-" * (20 - bar_fill)
-                bar_str  = f"[{bar}] {pct_now:+.1f}% / {pct_target:.0f}%"
             else:
                 bar_fill = int(min(abs(pct_now) / pct_target * 20, 20))
                 bar      = "!" * bar_fill + "-" * (20 - bar_fill)
-                bar_str  = f"[{bar}] {pct_now:+.1f}% / {pct_target:.0f}%"
-            print(f"\n  {BOLD}Daily Progress:{RESET}")
-            print(f"  Saldo Awal  : {BOLD}${start_bal:.2f}{RESET}  →  Target: ${target_bal:.2f}")
-            print(f"  Net Hari ini: {pnl_color}{BOLD}${daily_pnl:+.2f}  ({pct_now:+.1f}%){RESET}")
+            bar_str = f"[{bar}] {pct_now:+.1f}%"
+
+            print(f"\n  {BOLD}=== DAILY P&L ============================={RESET}")
+            print(f"  Saldo Awal  : {BOLD}${start_bal:.2f}{RESET}")
+            print(f"  Saldo Kini  : {pnl_color}{BOLD}${cur_bal:.2f}{RESET}")
+            print(f"  -----------------------------------------")
+            if daily_gross_win > 0 or daily_win_cnt > 0:
+                print(f"  Gross WIN   : {GREEN}{BOLD}+${daily_gross_win:.2f}{RESET}"
+                      f"  ({daily_win_cnt} trade)")
+            if daily_gross_loss > 0 or daily_loss_cnt > 0:
+                print(f"  Gross LOSS  : {RED}{BOLD}-${daily_gross_loss:.2f}{RESET}"
+                      f"  ({daily_loss_cnt} trade)")
+            print(f"  NET Hari ini: {pnl_color}{BOLD}${daily_pnl:+.2f}  ({pct_now:+.1f}%){RESET}")
             print(f"  {pnl_color}{bar_str}{RESET}")
+            print(f"  {BOLD}==========================================={RESET}")
 
     print(f"  {sep52}")

@@ -189,12 +189,11 @@ def calculate_auto_tp_sl(direction: str, close: float, atr: float,
 
 
 def _dynamic_rr(score: float) -> float:
-    # Selalu pakai fixed multiplier dari config — tidak diperlebar meski sinyal kuat
     try:
-        from config import ATR_MULTIPLIER_TP
-        return ATR_MULTIPLIER_TP
+        from config import ATR_MULTIPLIER_SL, ATR_MULTIPLIER_TP
+        return ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL if ATR_MULTIPLIER_SL > 0 else 1.0
     except Exception:
-        return 1.5
+        return 1.0
 
 
 def calculate_smart_tp_sl(direction: str, close: float, atr: float,
@@ -204,12 +203,24 @@ def calculate_smart_tp_sl(direction: str, close: float, atr: float,
         return {"tp": None, "sl": None, "tp_dist": 0,
                 "sl_dist": 0, "rr": 0, "method_tp": "NONE", "method_sl": "NONE"}
 
-    # Selalu pakai ATR fixed — tidak pakai swing levels
-    sl_dist   = atr * ATR_MULTIPLIER_SL
-    tp_mult   = ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL  # ratio fixed: TP/SL
-    tp_dist   = atr * ATR_MULTIPLIER_TP
-    sl_method = "ATR"
-    tp_method = f"ATR-1:{int(tp_mult)}"
+    # Pakai FIXED pips jika diset, fallback ke ATR
+    try:
+        from config import FIXED_SL_PIPS, FIXED_TP_PIPS
+        _use_fixed = FIXED_SL_PIPS and FIXED_SL_PIPS > 0
+    except Exception:
+        _use_fixed = False
+
+    if _use_fixed:
+        sl_dist   = float(FIXED_SL_PIPS)
+        tp_dist   = float(FIXED_TP_PIPS) if FIXED_TP_PIPS > 0 else sl_dist
+        sl_method = f"FIXED-{sl_dist}pip"
+        tp_method = f"FIXED-{tp_dist}pip"
+    else:
+        sl_dist   = atr * ATR_MULTIPLIER_SL
+        _rr       = ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL if ATR_MULTIPLIER_SL > 0 else 1.0
+        tp_dist   = sl_dist * _rr
+        sl_method = "ATR"
+        tp_method = f"ATR-1:{_rr:.1f}"
 
     if direction == "BUY":
         sl = round(close - sl_dist, decimals)
@@ -1043,41 +1054,40 @@ def _make_decision(df: pd.DataFrame, row: pd.Series, close: float,
         else:
             filters["trend"] = f"Macro {macro_trend} + SMC {smc_dir} aligned ✓"
     else:
-        # No SMC: must align with BOTH macro and short trend
+        # Scalping: ikut short trend (EMA20/50), macro hanya sebagai konteks
         if short_trend != macro_trend:
-            filters["trend"] = (f"COUNTER-TREND — short={short_trend} vs macro={macro_trend}"
-                                f" → NO TRADE")
-            reasons.append((0, f"Short trend {short_trend} berlawanan macro {macro_trend} — blok"))
-            return "WAIT", reasons, news_contribution, filters
-        raw_dir = macro_trend
-        filters["trend"] = f"Trend {raw_dir} — EMA20/50/200 aligned ✓"
+            # Counter-macro tapi short trend valid → boleh scalp, skor dikurangi
+            raw_dir = short_trend
+            filters["trend"] = (f"Counter-macro {short_trend} vs macro={macro_trend}"
+                                f" — scalp short-trend (penalty -1)")
+            reasons.append((-1, f"Short trend {short_trend} vs macro {macro_trend} — scalp ok"))
+        else:
+            raw_dir = macro_trend
+            filters["trend"] = f"Trend {raw_dir} — EMA20/50/200 aligned ✓"
 
     reasons.append((0, f"Trend {raw_dir} → arah dikonfirmasi"))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # HARD FILTER 3 — News
-    # HIGH impact = NO TRADE (unpredictable volatility)
-    # News bias opposing trend = NO TRADE
+    # News — daily bias hint saja, bukan hard block
+    # Searah  → boost kecil (+0.5 s/d +1.5)
+    # Berlawanan → penalty kecil (-0.5)
+    # HIGH risk berita → penalty kecil (-0.5), TIDAK blok trade
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if news_risk == "HIGH" and NEWS_HIGH_BLOCK:
-        filters["news"] = "HIGH impact news → NO TRADE"
-        reasons.append((-1.0, "News HIGH — entry dilarang (terlalu volatile)"))
-        return "WAIT", reasons, news_contribution, filters
-
     if _nb_bias != "NEUTRAL" and _nb_score >= 2:
-        if _news_dir and _news_dir != raw_dir:
-            filters["news"] = f"News {_nb_bias} berlawanan trend {raw_dir} → NO TRADE"
-            reasons.append((0, f"News {_nb_bias} berlawanan {raw_dir} — blok"))
-            return "WAIT", reasons, news_contribution, filters
-        if _news_dir == raw_dir:
+        if _news_dir and _news_dir == raw_dir:
             boost = {"HIGH": 1.5, "MEDIUM": 1.0, "LOW": 0.5}.get(_nb_conf, 0.5)
             news_contribution = boost
-            filters["news"]   = f"News {_nb_bias} searah {raw_dir} → +{boost:.1f} ✓"
+            filters["news"]   = f"News {_nb_bias} searah {raw_dir} → +{boost:.1f} [hint] ✓"
             reasons.append((boost, f"News {_nb_bias} searah {raw_dir} → +{boost:.1f}"))
+        elif _news_dir and _news_dir != raw_dir:
+            # Berlawanan → penalty ringan, bukan blok
+            news_contribution = -0.5
+            filters["news"]   = f"News {_nb_bias} berlawanan {raw_dir} → -0.5 [hint]"
+            reasons.append((-0.5, f"News {_nb_bias} berlawanan {raw_dir} (daily hint)"))
         else:
-            filters["news"] = f"{news_risk} neutral — OK"
+            filters["news"] = f"News {_nb_bias} neutral — OK"
     else:
-        filters["news"] = f"{news_risk} — OK"
+        filters["news"] = f"News {news_risk} — OK"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # HARD FILTER 4 — RSI Momentum
@@ -1148,19 +1158,27 @@ def _make_decision(df: pd.DataFrame, row: pd.Series, close: float,
     # HARD FILTER 8 — Session Filter Pro (Upgrade 6)
     # XAUUSD paling aktif dan reliable saat London & New York session
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    from config import SESSION_FILTER, LONDON_OPEN_UTC, LONDON_CLOSE_UTC, NY_OPEN_UTC, NY_CLOSE_UTC
+    from config import (SESSION_FILTER, ASIAN_OPEN_UTC, ASIAN_CLOSE_UTC,
+                        LONDON_OPEN_UTC, LONDON_CLOSE_UTC, NY_OPEN_UTC, NY_CLOSE_UTC)
     if SESSION_FILTER:
         from datetime import datetime as _dt2, timezone as _tz2
         _utc_h     = _dt2.now(tz=_tz2.utc).hour
+        # Asian: 22:00-07:00 UTC (05:00-14:00 WIB) — wraps midnight
+        _in_asian  = (_utc_h >= ASIAN_OPEN_UTC) or (_utc_h < ASIAN_CLOSE_UTC)
         _in_london = LONDON_OPEN_UTC <= _utc_h < LONDON_CLOSE_UTC
         _in_ny     = NY_OPEN_UTC     <= _utc_h < NY_CLOSE_UTC
-        if not (_in_london or _in_ny):
-            _sess = ("Asian" if 0 <= _utc_h < 7 else "Off-Hours")
-            filters["session"] = f"NO TRADE — {_sess} session (UTC {_utc_h:02d}:xx, bukan London/NY)"
-            reasons.append((0, f"Session filter: UTC {_utc_h:02d}:xx bukan London/NY — WAIT"))
+        if not (_in_asian or _in_london or _in_ny):
+            filters["session"] = f"NO TRADE — Off-Hours (UTC {_utc_h:02d}:xx, di luar 22:00-21:00 UTC)"
+            reasons.append((0, f"Session filter: UTC {_utc_h:02d}:xx — WAIT"))
             return "WAIT", reasons, news_contribution, filters
-        _sess_label = ("London+NY Overlap" if (_in_london and _in_ny) else
-                       ("London" if _in_london else "New York"))
+        if _in_london and _in_ny:
+            _sess_label = "London+NY Overlap"
+        elif _in_london:
+            _sess_label = "London"
+        elif _in_ny:
+            _sess_label = "New York"
+        else:
+            _sess_label = "Asian (Tokyo/Sydney)"
         filters["session"] = f"{_sess_label} session (UTC {_utc_h:02d}:xx) ✓"
     else:
         filters["session"] = "session filter OFF"
@@ -1329,9 +1347,11 @@ def generate_signal(df: pd.DataFrame,
     # New York → boost breakout (SMC/volume/momentum)
     # Overlap  → boost keduanya
     from datetime import datetime as _dt_sb, timezone as _tz_sb
-    from config import (LONDON_OPEN_UTC as _LON_O, LONDON_CLOSE_UTC as _LON_C,
+    from config import (ASIAN_OPEN_UTC as _AS_O, ASIAN_CLOSE_UTC as _AS_C,
+                        LONDON_OPEN_UTC as _LON_O, LONDON_CLOSE_UTC as _LON_C,
                         NY_OPEN_UTC     as _NY_O,  NY_CLOSE_UTC      as _NY_C)
     _utc_h_sb  = _dt_sb.now(tz=_tz_sb.utc).hour
+    _in_asi_sb = (_utc_h_sb >= _AS_O) or (_utc_h_sb < _AS_C)  # 22:00-07:00 UTC wraps midnight
     _in_lon_sb = _LON_O <= _utc_h_sb < _LON_C
     _in_ny_sb  = _NY_O  <= _utc_h_sb < _NY_C
 
@@ -1348,8 +1368,11 @@ def generate_signal(df: pd.DataFrame,
         _session_name_sb = "New York"
         total_smc *= 1.25   # breakout: SMC, order block, liquidity
         total_vol *= 1.20   # volume + momentum lebih penting di NY
+    elif _in_asi_sb:
+        _session_name_sb = "Asian (Tokyo/Sydney)"
+        total_str *= 1.05   # Asian lebih tenang, boost kecil untuk struktur
     else:
-        _session_name_sb = "Other"   # outside London/NY → session filter sudah blok di Hard Filter 8
+        _session_name_sb = "Other"
     filters["session_strategy"] = f"Strategy: {_session_name_sb}"
 
     # ── EMA short-trend alignment dampening ──────────────────────────

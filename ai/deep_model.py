@@ -1,7 +1,3 @@
-"""
-Deep Learning Model (LSTM + Dense Neural Network)
-untuk prediksi arah candle dengan TensorFlow/Keras
-"""
 import numpy as np
 import pandas as pd
 import warnings
@@ -48,10 +44,6 @@ FEATURE_COLS_DL = [
 
 
 class LSTMPredictor:
-    """
-    Bidirectional LSTM + CNN hybrid untuk prediksi candle.
-    Lebih baik dari Random Forest untuk data time series berurutan.
-    """
 
     def __init__(self, timeframe: str = "1h"):
         if not TF_AVAILABLE:

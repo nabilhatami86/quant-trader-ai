@@ -1,24 +1,3 @@
-"""
-ai/ml/trainer.py — XAUUSD M1+M5 Scalping: full training pipeline.
-
-Steps:
-    1.  Load MT5 data          (data/)
-    2.  EDA charts
-    3.  M5 features + merge
-    4.  M1 feature engineering
-    5.  Target labelling       (TP/SL hit within lookahead)
-    6.  Preprocessing          (scale, feature selection)
-    7.  Baseline models        (RF, LGB, XGB)
-    8.  Optuna hyperparameter tuning
-    9.  Walk-forward validation
-    10. SHAP analysis
-    11. Backtest
-    12. Model comparison chart
-    13. Export model            (models/)
-
-Run:
-    python -m ai.ml.trainer
-"""
 import sys
 import warnings
 import json

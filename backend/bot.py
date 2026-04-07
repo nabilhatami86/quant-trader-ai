@@ -1,32 +1,3 @@
-"""
-bot.py — Trading Bot: data fetching, indicator pipeline, ML training, analisis sinyal.
-
-Kelas utama:
-  TradingBot   : inti bot — load data, train ML, generate signal, analyze, print output
-
-Alur kerja (per siklus):
-  1. load_data()     → ambil OHLCV dari MT5 / TradingView / Yahoo Finance
-  2. train_model()   → latih CandlePredictor (ensemble ML) + LSTM (opsional)
-  3. analyze()       → jalankan indikator → generate_signal → gabungkan ML vote
-                       → terapkan session bias (GUARD-HTF-Bias)
-                       → tentukan final direction + TP/SL/RR
-  4. print_result()  → tampilkan hasil analisis di terminal dengan warna
-
-Sumber data (prioritas):
-  1. MT5 live (realtime, candle forming)
-  2. TradingView via tvdatafeed (--tv)
-  3. Yahoo Finance (fallback, delay ~1 menit)
-
-Session Bias (GUARD-HTF-Bias):
-  Analisis HTF (H4+Daily) dijalankan saat session close (Tokyo/London/Daily).
-  Jika bias score >= 3.0 dan sinyal M5 berlawanan → WAIT (blok masuk).
-  Bias state disimpan di data/session_bias_state.json.
-
-Dependencies:
-  yfinance, pandas, numpy, MetaTrader5 (opsional),
-  ai.model.CandlePredictor, ai.deep_model.LSTMPredictor,
-  data.news_filter.NewsFilter, data.candle_db
-"""
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -114,24 +85,6 @@ def get_market_session() -> str:
 
 
 class TradingBot:
-    """
-    Inti trading bot — mengelola data, ML, dan analisis sinyal.
-
-    Params:
-      symbol        : simbol trading (misal "XAUUSD", "EURUSD")
-      timeframe     : timeframe candle ("1m","5m","15m","1h","4h","1d")
-      use_lstm      : aktifkan LSTM deep model (butuh TensorFlow)
-      use_news      : aktifkan news filter (sentiment + economic calendar)
-      mt5_connector : instance MT5Connector yang sudah connected
-      use_tv        : gunakan TradingView sebagai sumber data
-      tv_user/pass  : kredensial TradingView (opsional, untuk akun premium)
-
-    State penting:
-      self.df       : raw OHLCV terbaru
-      self.df_ind   : OHLCV + semua indikator (99 kolom)
-      self.trained  : True setelah train_model() berhasil
-      self.train_result : dict hasil training ML (accuracy, precision, dll)
-    """
 
     def __init__(self, symbol: str = DEFAULT_SYMBOL, timeframe: str = DEFAULT_TIMEFRAME,
                  use_lstm: bool = False, use_news: bool = True,
@@ -230,7 +183,7 @@ class TradingBot:
         self.df_hist = merged   # seluruh historis (untuk training)
         # max_rows=1000: analisis cukup 1000 candle terakhir (lebih cepat)
         self.df_ind  = add_all_indicators(raw, max_rows=1000)
-        # Training butuh semua data → max_rows=0 (tanpa batas)
+        # Training butuh semua data
         self.df_ind_hist = add_all_indicators(merged, max_rows=0) if len(merged) > len(raw) else self.df_ind
 
         # ── Simpan ke PostgreSQL untuk analisa ────────────────────────
@@ -333,17 +286,22 @@ class TradingBot:
                 "atr": 0,
             }
 
-        # ── Realtime data dari MT5 (tick + orderbook) ─────────────────
+        # ── Realtime data dari MT5 ────────────────────────────────────
         rt_data = {}
         if self.mt5_conn and self.mt5_conn.connected:
             rt_data = self.mt5_conn.get_realtime_data(self.symbol, tick_seconds=60)
 
-        news_bias = self.news_sentiment.get("direction_bias") if self.news_sentiment else None
-        news_risk = self.news_sentiment.get("risk_level", "LOW") if self.news_sentiment else "LOW"
-        sig = generate_signal(self.df_ind, news_bias=news_bias,
-                              news_risk=news_risk, candle_memory=candle_memory)
+        news_bias   = self.news_sentiment.get("direction_bias") if self.news_sentiment else None
+        news_risk   = self.news_sentiment.get("risk_level", "LOW") if self.news_sentiment else "LOW"
+        news_bias_  = (news_bias or {}).get("bias", "NEUTRAL")
+        news_score_ = (news_bias or {}).get("score", 0)
 
-        _h4_bias_dir = "NEUTRAL"  # H4 filter dinonaktifkan (scalping mode)
+        # ── Rule-based signal DINONAKTIFKAN — pakai ScalpML saja ─────
+        # sig = generate_signal(self.df_ind, news_bias=news_bias,
+        #                       news_risk=news_risk, candle_memory=candle_memory)
+        sig = {"direction": "WAIT", "score": 0, "confidence": 0,
+               "reasons": [], "filters": {"mode": "ScalpML-Only"},
+               "signal_strength": "", "market_state": ""}
 
         ml_pred   = {}
         lstm_pred = {}
@@ -351,7 +309,7 @@ class TradingBot:
         row   = self.df_ind.iloc[-1]
         close = float(row["Close"])
 
-        # ScalpingPredictor (M5, pre-trained model)
+        # ── ScalpingPredictor — satu-satunya sumber sinyal ────────────
         scalping_pred = {}
         if SCALPING_ML_AVAILABLE and _scalping_pred is not None:
             try:
@@ -360,18 +318,16 @@ class TradingBot:
                 if 'volume' not in m5_raw.columns:
                     m5_raw['volume'] = 0
                 scalping_pred = _scalping_pred.predict(m5_raw)
-            except Exception:
+            except Exception as _e:
                 scalping_pred = {}
+                print(f"[ScalpML] predict error: {_e}")
 
-        consensus_dir = sig["direction"]
-        consensus     = sig["direction"] if sig["direction"] in ("BUY","SELL") else "NO SIGNAL"
+        consensus = "NO SIGNAL"
 
         from ai.signals import calculate_smart_tp_sl
 
-        sig_dir    = sig["direction"]
-        rule_conf  = sig.get("confidence", 0)
-        news_bias_  = (news_bias or {}).get("bias", "NEUTRAL")
-        news_score_ = (news_bias or {}).get("score", 0)
+        sig_dir   = "WAIT"
+        rule_conf = 0
 
         # ─── Session Bias dari analisis jam tutup sesi ────────────────────
         _sess_bias_dir   = "NEUTRAL"
@@ -407,11 +363,12 @@ class TradingBot:
         rt_score = rt_data.get("realtime_score", 0)
         rt_note  = f" +RT:{rt_bias}" if rt_bias != "NEUTRAL" else ""
 
-        # ─── GUARD: No new position if one already open ─────────────────
+        # ─── GUARD: tunggu posisi tutup dulu (SL/TP) ────────────────────
         _open_positions = []
         if self.mt5_conn and self.mt5_conn.connected:
             try:
-                _open_positions = self.mt5_conn.mt5.get_positions(self.symbol)
+                # get_all_positions: cek semua arah (BUY dan SELL)
+                _open_positions = self.mt5_conn.mt5.get_all_positions(self.symbol)
             except Exception:
                 _open_positions = []
         _n_open = len(_open_positions)
@@ -420,32 +377,27 @@ class TradingBot:
         sc_prob = scalping_pred.get("probability", 0.0)
         sc_conf = scalping_pred.get("confidence", "LOW")
 
-        if sig_dir in ("BUY", "SELL") and _n_open >= MAX_OPEN_POSITIONS:
+        # ── ML-ONLY MODE — rule-based dinonaktifkan sementara ────────────
+        # Indikator sudah di-encode ke dalam model, pakai ScalpML langsung.
+        # Rule+indicator hanya jadi info log, tidak blok order.
+        # Aktifkan kembali: hapus blok ini dan uncomment Rule logic di bawah.
+        # ─────────────────────────────────────────────────────────────────
+        _sc_thr = _scalping_pred.prob_threshold if _scalping_pred else 0.52
+
+        if _n_open >= MAX_OPEN_POSITIONS:
             exec_direction = "WAIT"
             exec_source    = f"GUARD-MaxPos ({_n_open} open)"
             priority_num   = 0
 
-        elif sig_dir in ("BUY", "SELL"):
-            exec_direction = sig_dir
-            if sc_dir == sig_dir:
-                exec_source = f"Rule+ScalpML({sc_conf},{sc_prob:.2f}) conf={rule_conf}"
-            elif sc_dir in ("BUY", "SELL") and sc_dir != sig_dir and sc_conf == "HIGH":
-                exec_direction = "WAIT"
-                exec_source    = f"ScalpML-CANCEL({sc_dir} HIGH vs Rule:{sig_dir})"
-            else:
-                exec_source = f"Rule conf={rule_conf}"
-            priority_num = 3
-
-        elif sc_dir in ("BUY", "SELL") and sc_prob >= 0.65 and sc_conf in ("HIGH", "MEDIUM"):
-            # ScalpML saja — rule tidak ada sinyal
+        elif sc_dir in ("BUY", "SELL") and sc_prob >= _sc_thr:
             from ai.signals import calculate_smart_tp_sl
             exec_direction = sc_dir
-            exec_source    = f"ScalpML-Only({sc_conf},{sc_prob:.2f})"
-            priority_num   = 4
+            exec_source    = f"ScalpML({sc_conf},{sc_prob:.3f})"
+            priority_num   = 1
             tp_sl = calculate_smart_tp_sl(
                 exec_direction, close,
                 float(row.get("atr", close * 0.001)),
-                self.df_ind, sig.get("score", 0)
+                self.df_ind, 5.0
             )
             sig = dict(sig)
             sig["direction"] = exec_direction
@@ -457,8 +409,33 @@ class TradingBot:
 
         else:
             exec_direction = "WAIT"
-            exec_source    = "NoSignal"
+            exec_source    = f"ScalpML-WAIT(prob={sc_prob:.3f}<{_sc_thr})"
             priority_num   = 5
+
+        # ── Rule-based logic (dinonaktifkan — indikator sudah di model) ──
+        # if sig_dir in ("BUY", "SELL") and _n_open >= MAX_OPEN_POSITIONS:
+        #     exec_direction = "WAIT"
+        #     exec_source    = f"GUARD-MaxPos ({_n_open} open)"
+        #     priority_num   = 0
+        # elif sig_dir in ("BUY", "SELL"):
+        #     exec_direction = sig_dir
+        #     if sc_dir == sig_dir:
+        #         exec_source = f"Rule+ScalpML({sc_conf},{sc_prob:.2f}) conf={rule_conf}"
+        #     elif sc_dir in ("BUY","SELL") and sc_dir != sig_dir and sc_conf=="HIGH" and sc_prob>=0.75:
+        #         exec_direction = "WAIT"
+        #         exec_source    = f"ScalpML-CANCEL({sc_dir} p={sc_prob:.2f} vs Rule:{sig_dir})"
+        #     else:
+        #         exec_source = f"Rule conf={rule_conf}"
+        #     priority_num = 3
+        # elif sc_dir in ("BUY","SELL") and sc_prob >= 0.65 and sc_conf in ("HIGH","MEDIUM"):
+        #     exec_direction = sc_dir
+        #     exec_source    = f"ScalpML-Only({sc_conf},{sc_prob:.2f})"
+        #     priority_num   = 4
+        #     ...
+        # else:
+        #     exec_direction = "WAIT"
+        #     exec_source    = "NoSignal"
+        #     priority_num   = 5
 
         # Risk note
         risk_note = ""
@@ -504,7 +481,7 @@ class TradingBot:
             "lstm_pred":       lstm_pred,
             "scalping_pred":   scalping_pred,
             "consensus":       consensus,
-            "consensus_dir":   consensus_dir,
+            "consensus_dir":   consensus,
             "exec_direction":  exec_direction,
             "exec_source":     exec_source,
             "priority_num":    priority_num,

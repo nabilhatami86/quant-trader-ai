@@ -1018,29 +1018,47 @@ class SignalExecutor:
         _cooldown_min    = 0
         _max_trades_hour = 9999
 
-        # ── Daily Profit limit (stop saat target tercapai, loss tetap jalan) ──
+        # Daily profit limit DINONAKTIFKAN — biarkan jalan sampai market tutup
+        # _dp = getattr(self, "_daily_profit", 0.0)
+        # if _dp >= _daily_limit: return False
+
+
+        # ── GUARD 1: 1 posisi saja — tunggu SL/TP kena ────────────────────
+        from config import MAX_OPEN_POSITIONS
+        live_positions = self.mt5.get_all_positions(self.symbol)  # semua arah
+        n_open = len(live_positions) if live_positions else 0
+        if n_open >= MAX_OPEN_POSITIONS:
+            dirs = [p.get("direction","?") for p in live_positions]
+            print(f"  [GUARD] {n_open} posisi masih buka {dirs} — "
+                  f"tunggu SL/TP kena dulu")
+            return False
+
+        # ── GUARD 2: Larang entry berlawanan ──────────────────────────────
         try:
-            from config import REAL_DAILY_LIMIT_PCT
-            _start_bal = getattr(self, "_daily_start_balance", 0.0)
-            _daily_limit = round(_start_bal * REAL_DAILY_LIMIT_PCT, 2) if _start_bal else 0.0
-            if _daily_limit > 0:
-                _dp = getattr(self, "_daily_profit", 0.0)
-                if _dp >= _daily_limit:
-                    print(f"  [RISK] STOP — profit target hari ini tercapai "
-                          f"${_dp:.2f} >= ${_daily_limit:.2f} ({REAL_DAILY_LIMIT_PCT*100:.0f}%)")
-                    return False
+            from config import ALLOW_OPPOSITE
+            if not ALLOW_OPPOSITE and live_positions:
+                existing_dirs = [p.get("direction","?") for p in live_positions]
+                if direction in ("BUY","SELL"):
+                    opposite = "SELL" if direction == "BUY" else "BUY"
+                    if opposite in existing_dirs:
+                        print(f"  [GUARD] Ada posisi {opposite} terbuka — "
+                              f"skip {direction} (ALLOW_OPPOSITE=False)")
+                        return False
         except Exception:
             pass
 
-
-        # ── Live open position check (langsung dari MT5, bukan cache) ─────
-        from config import MAX_OPEN_POSITIONS
-        live_positions = self.mt5.get_positions(self.symbol)
-        n_open = len(live_positions) if live_positions else 0
-        if n_open >= MAX_OPEN_POSITIONS:
-            print(f"  [GUARD] {n_open} posisi masih terbuka "
-                  f"(max {MAX_OPEN_POSITIONS}) — tidak buka baru")
-            return False
+        # ── GUARD 3: Cooldown setelah entry ──────────────────────────────
+        try:
+            from config import TRADE_COOLDOWN_MIN
+            if TRADE_COOLDOWN_MIN > 0:
+                elapsed = (time.time() - self.last_tick) / 60
+                if self.last_tick > 0 and elapsed < TRADE_COOLDOWN_MIN:
+                    remaining = int((TRADE_COOLDOWN_MIN - elapsed) * 60)
+                    print(f"  [COOLDOWN] Tunggu {remaining}s lagi "
+                          f"(cooldown {TRADE_COOLDOWN_MIN} menit)")
+                    return False
+        except Exception:
+            pass
 
         if self.strict_mode:
             # Sinyal sudah lolos decision engine — trust langsung
@@ -1058,9 +1076,10 @@ class SignalExecutor:
             # ── Reset daily counters jika hari baru ──────────────────────────
             today = _dt.date.today()
             if not hasattr(self, "_daily_date") or self._daily_date != today:
-                self._daily_date   = today
-                self._daily_loss   = 0.0
-                self._daily_profit = 0.0
+                self._daily_date       = today
+                self._daily_loss       = 0.0
+                self._daily_profit     = 0.0
+                self._daily_gross_win  = 0.0
                 # Catat balance awal hari
                 try:
                     _bal = self.mt5.get_balance() or 0.0
@@ -1081,12 +1100,11 @@ class SignalExecutor:
 
             _daily_limit = getattr(self, "_daily_limit", 0.0)
 
-            # ── Daily profit limit (loss tetap jalan) ────────────────────────
-            _dp = getattr(self, "_daily_profit", 0.0)
-            if _daily_limit > 0 and _dp >= _daily_limit:
-                print(f"  [RISK] STOP — profit target hari ini tercapai "
-                      f"${_dp:.2f} >= ${_daily_limit:.2f}")
-                return False
+            # Daily profit limit DINONAKTIFKAN — biarkan jalan sampai market tutup
+            # _dp = getattr(self, "_daily_profit", 0.0)
+            # if _daily_limit > 0 and _dp >= _daily_limit:
+            #     print(f"  [RISK] STOP — profit target tercapai ${_dp:.2f}")
+            #     return False
 
             all_pos = self.mt5.get_all_positions(self.symbol)
 
@@ -1250,9 +1268,20 @@ class SignalExecutor:
             from concurrent.futures import ThreadPoolExecutor, as_completed
             from config import ATR_MULTIPLIER_SL, ATR_MULTIPLIER_TP
 
-            # sl_dist dan tp_dist dari sinyal (jarak, bukan harga absolut)
-            _sl_dist = signal.get("sl_dist") or abs(price - sl) if sl else None
-            _tp_dist = signal.get("tp_dist") or abs(tp - price) if tp else None
+            # Pakai FIXED pips jika diset
+            try:
+                from config import FIXED_SL_PIPS, FIXED_TP_PIPS
+                _use_fixed = FIXED_SL_PIPS and FIXED_SL_PIPS > 0
+            except Exception:
+                _use_fixed = False
+
+            if _use_fixed:
+                _sl_dist  = float(FIXED_SL_PIPS)
+                _tp_dist  = float(FIXED_TP_PIPS) if FIXED_TP_PIPS > 0 else _sl_dist
+            else:
+                _rr_ratio = ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL if ATR_MULTIPLIER_SL > 0 else 1.0
+                _sl_dist  = signal.get("sl_dist") or abs(price - sl) if sl else None
+                _tp_dist  = _sl_dist * _rr_ratio if _sl_dist else None
 
             def _place(_):
                 # Ambil harga aktual saat order ini dikirim
@@ -1262,10 +1291,11 @@ class SignalExecutor:
 
                 if _sl_dist:
                     _sl = round(_price - _sl_dist if direction == "BUY" else _price + _sl_dist, 2)
-                    _tp = round(_price + _tp_dist if direction == "BUY" else _price - _tp_dist, 2) if _tp_dist else None
+                    _tp = round(_price + _tp_dist if direction == "BUY" else _price - _tp_dist, 2)
                 else:
                     _sl_d = float(_atr) * ATR_MULTIPLIER_SL
-                    _tp_d = float(_atr) * ATR_MULTIPLIER_TP
+                    _rr   = ATR_MULTIPLIER_TP / ATR_MULTIPLIER_SL if ATR_MULTIPLIER_SL > 0 else 1.0
+                    _tp_d = _sl_d * _rr
                     _sl = round(_price - _sl_d if direction == "BUY" else _price + _sl_d, 2)
                     _tp = round(_price + _tp_d if direction == "BUY" else _price - _tp_d, 2)
 
@@ -1326,41 +1356,23 @@ class SignalExecutor:
                 "direction": direction,
             }
 
-        # ── FLIP POSISI — close posisi berlawanan sebelum buka yang baru ──────
-        # Kalau ada open SELL dan signal BUY masuk (atau sebaliknya),
-        # tutup semua posisi berlawanan dulu, baru buka arah baru.
-        _opposite = "SELL" if direction == "BUY" else "BUY"
-        _opp_positions = [p for p in self.mt5.get_positions(self.symbol)
-                          if p["direction"] == _opposite]
-        if _opp_positions:
-            print(f"  [FLIP] Signal {direction} — close {len(_opp_positions)} posisi {_opposite} dulu")
-            for _pos in _opp_positions:
-                _cr = self.mt5.close_position(_pos["ticket"])
-                if _cr.get("success"):
-                    print(f"  [FLIP] #{_pos['ticket']} {_opposite} ditutup ✓")
-                else:
-                    print(f"  [FLIP] #{_pos['ticket']} gagal tutup: {_cr.get('error')}")
-
-        # Saat stacking: gunakan SL yang paling jauh dari harga saat ini
-        # agar posisi lama tidak kena SL duluan
-        existing = self.mt5.get_positions(self.symbol)
-        same_dir = [p for p in existing if p["direction"] == direction]
-        if same_dir and sl:
-            existing_sls = [p["sl"] for p in same_dir if p.get("sl")]
-            if existing_sls:
-                if direction == "BUY":
-                    # BUY: SL di bawah harga — pakai yg paling rendah (paling jauh)
-                    sl = min(sl, min(existing_sls))
-                else:
-                    # SELL: SL di atas harga — pakai yg paling tinggi (paling jauh)
-                    sl = max(sl, max(existing_sls))
-
-                # Update SL posisi lama agar semua sejajar
-                for pos in same_dir:
-                    if pos.get("sl") != sl:
-                        res = self.mt5.modify_position(pos["ticket"], sl=sl)
-                        if res.get("success"):
-                            print(f"  [STACK] #{pos['ticket']} SL disejajarkan → {sl:.5f}")
+        # FLIP & SL-alignment DINONAKTIFKAN — setiap order punya SL/TP sendiri
+        # Posisi berlawanan TIDAK ditutup — biarkan MT5 yang tutup via SL/TP
+        # SL posisi lama TIDAK diubah — tiap order independen
+        # ─────────────────────────────────────────────────────────────────────
+        # _opposite = "SELL" if direction == "BUY" else "BUY"
+        # _opp_positions = [p for p in self.mt5.get_positions(self.symbol)
+        #                   if p["direction"] == _opposite]
+        # if _opp_positions:
+        #     print(f"  [FLIP] Signal {direction} — close {len(_opp_positions)} posisi {_opposite} dulu")
+        #     for _pos in _opp_positions:
+        #         _cr = self.mt5.close_position(_pos["ticket"])
+        #         ...
+        #
+        # existing = self.mt5.get_positions(self.symbol)
+        # same_dir = [p for p in existing if p["direction"] == direction]
+        # if same_dir and sl:
+        #     ...  # SL alignment — DINONAKTIFKAN
 
         # Set timeframe agar log_entry bisa catat TF yang benar
         self.mt5._journal_tf = getattr(self, "_timeframe", "")
@@ -1761,9 +1773,13 @@ class SignalExecutor:
                 self._daily_profit = 0.0
             if not hasattr(self, "_daily_loss"):
                 self._daily_loss = 0.0
-            self._daily_profit += pnl          # net: bisa naik (WIN) atau turun (LOSS)
+            self._daily_profit += pnl          # net: WIN - LOSS
             if pnl < 0:
-                self._daily_loss += abs(pnl)   # keep loss tracker untuk referensi
+                self._daily_loss += abs(pnl)   # gross LOSS (absolut)
+            else:
+                if not hasattr(self, "_daily_gross_win"):
+                    self._daily_gross_win = 0.0
+                self._daily_gross_win += pnl   # gross WIN
 
             # Update CSV journal
             try:
