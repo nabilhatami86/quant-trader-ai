@@ -112,10 +112,15 @@ MIN_QUALITY_SCORE     = 4      # min quality points (max 6): trend+candle+struct
 MAX_OPEN_POSITIONS    = 1      # 1 posisi saja — tunggu SL/TP kena baru buka lagi
 
 # Anti-Overtrading
-TRADE_COOLDOWN_MIN    = 3      # 3 menit cooldown setelah entry
-SL_COOLDOWN_MIN       = 0      # tidak ada cooldown setelah SL
-MAX_TRADES_PER_HOUR   = 0      # tidak ada batas per jam
-MAX_DAILY_TRADES      = 0      # tidak ada batas harian
+TRADE_COOLDOWN_MIN    = 15     # 15 menit cooldown — kurangi dari 97 jadi ~20 trade/hari
+SL_COOLDOWN_MIN       = 10     # 10 menit cooldown setelah kena SL (jangan balas dendam)
+MAX_TRADES_PER_HOUR   = 3      # max 3 trade per jam
+MAX_DAILY_TRADES      = 0      # 0 = nonaktif; stop harian pakai target profit/loss
+
+# Jam trading — skip jam yang secara historis rugi (WIB = UTC+7)
+# Jam profit: 08-11 WIB, 18-20 WIB, 00-01 WIB
+# Jam rugi  : 12-16 WIB, 21-23 WIB
+BLOCK_HOURS_WIB       = []  # kosong = semua jam aktif (data gathering)
 
 # Arah berlawanan
 ALLOW_OPPOSITE        = False  # False = skip SELL jika ada BUY, skip BUY jika ada SELL
@@ -137,6 +142,16 @@ AUTO_TP_SL        = False
 ATR_MULTIPLIER_SL = 1.0    # dipakai hanya jika FIXED_SL_PIPS = 0
 ATR_MULTIPLIER_TP = 2.0    # dipakai hanya jika FIXED_TP_PIPS = 0
 MIN_RR_RATIO      = 1.8    # tolak sinyal jika RR < 1.8
+
+# TP adaptif berbasis probabilitas ML:
+# - sinyal sedang: TP lebih dekat agar lebih sering kena
+# - sinyal kuat  : TP tetap lebar agar reward tetap bagus
+ADAPTIVE_TP_BY_PROB  = True
+TP_PROB_MEDIUM       = 0.68
+TP_PROB_STRONG       = 0.75
+FIXED_TP_PIPS_WEAK   = 8.0
+FIXED_TP_PIPS_MEDIUM = 10.0
+FIXED_TP_PIPS_STRONG = 12.0
 
 # Spread filter
 MAX_SPREAD_PIPS       = 1.5    # blok order jika spread > 1.5 pip
@@ -235,7 +250,7 @@ REAL_SL_COOLDOWN      = 0     # DINONAKTIFKAN — tidak ada cooldown setelah SL
 # ── Daily Profit/Loss Limit ────────────────────────────────────────────────────
 # Balance $48 → profit target $4.8 (10%), loss limit $2.4 (5%)
 # Bot STOP saat salah satu tercapai — tidak lanjut trading hari itu
-REAL_DAILY_PROFIT_PCT = 0.20  # 20% profit target → bot berhenti, profit terjaga
+REAL_DAILY_PROFIT_PCT = 0.0   # DINONAKTIFKAN sementara untuk testing
 REAL_DAILY_LIMIT_PCT  = 0.0   # DINONAKTIFKAN — terus trading sampai profit
 REAL_MAX_DAILY_PROFIT = 0.0   # (legacy, tidak dipakai)
 REAL_MAX_DAILY_LOSS   = 0.0   # (legacy, tidak dipakai)
@@ -251,3 +266,22 @@ FORCE_TRADE_MAX_LOT = 0.03  # lot maksimum yang diizinkan meski via force-trade
 TREND_FILTER_ENABLED  = True   # aktifkan filter trend H1
 TREND_FILTER_MIN_ADX  = 25     # blok hanya kalau trend kuat (ADX > 25)
                                # ADX < 25 = sideways, semua arah diizinkan
+TREND_FILTER_STRONG_PROB = 0.75  # jika prob ML sangat kuat, counter-trend boleh lolos
+
+# Pre-trade correction
+PRETRADE_STRONG_PROB      = 0.78  # sinyal sangat kuat boleh lebih fleksibel
+PRETRADE_CAUTION_LOT_MULT = 0.5   # verdict CAUTION → lot diperkecil 50%
+
+# ── Runtime-configurable (bisa diubah via API /settings) ─────────────────────
+USE_SWING_SL_TP           = False  # True = pakai swing-based SL/TP dari predictor
+ML_PROB_THRESHOLD         = 0.62   # ML minimum probability untuk entry
+TRADE_COOLDOWN_MIN        = 5.0    # cooldown antar trade dalam menit
+MAX_TRADES_PER_HOUR       = 2      # maks trade per jam
+
+# Target harian (0 = nonaktif, bot terus jalan)
+DAILY_PROFIT_TARGET_USD   = 0.0    # target profit per hari dalam USD, 0 = pakai pct
+DAILY_LOSS_LIMIT_USD      = 0.0    # batas rugi per hari dalam USD, 0 = nonaktif
+
+# Circuit breaker (dapat diubah via API)
+CIRCUIT_BREAKER_LOSSES    = 5      # jumlah loss hari ini sebelum cooldown aktif
+CIRCUIT_BREAKER_COOLDOWN_H = 2.0   # durasi cooldown dalam jam

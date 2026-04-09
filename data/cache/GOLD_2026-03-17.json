@@ -1,0 +1,17 @@
+{
+  "date": "2026-03-17",
+  "symbol": "GOLD",
+  "news": [
+    {
+      "title": "Israel responds with airstrike, conflict continues",
+      "impact": "HIGH",
+      "date": "yesterday"
+    },
+    {
+      "title": "Fed hawkish signals rate hike possible this year",
+      "impact": "HIGH",
+      "date": "yesterday"
+    }
+  ],
+  "calendar": []
+}

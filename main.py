@@ -51,11 +51,11 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
         pass
 
 from config import *
-from backend.bot import TradingBot, fetch_data
-from backtest.engine import run_backtest, print_backtest_report
-from ai.indicators import add_all_indicators
-from backend.broker.mt5_connector import MT5Connector, SignalExecutor, MT5_AVAILABLE
-from backend.broker.mt4_bridge import MT4Bridge
+from app.engine.bot import TradingBot, fetch_data
+from app.engine.backtest.engine import run_backtest, print_backtest_report
+from app.engine.signals.indicators import add_all_indicators
+from app.engine.broker.mt5_connector import MT5Connector, SignalExecutor, MT5_AVAILABLE
+from app.engine.broker.mt4_bridge import MT4Bridge
 
 
 def parse_args():
@@ -222,7 +222,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
 
     # Candle memory — cari pola serupa dari histori sebelum generate sinyal
-    from data.candle_log import (find_similar_candles, print_similar_report,
+    from app.services.candle_log import (find_similar_candles, print_similar_report,
                                   log_candle, print_recent, print_signal_candles,
                                   update_signal_outcomes, get_signal_accuracy)
     candle_memory = None
@@ -246,7 +246,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
     bot.print_analysis(result)
 
-    from ai.signals import print_filter_log
+    from app.engine.signals.signals import print_filter_log
     sig = result.get("signal", {})
     if sig:
         print_filter_log(sig.get("filters", {}), sig.get("direction", "WAIT"))
@@ -274,8 +274,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             atr   = result.get("atr", close * 0.001) if result.get("atr") else close * 0.001
 
             if sig.get("sl") is None:
-                from ai.signals import calculate_smart_tp_sl
-                from ai.indicators import add_all_indicators
+                from app.engine.signals.signals import calculate_smart_tp_sl
+                from app.engine.signals.indicators import add_all_indicators
                 tp_sl = calculate_smart_tp_sl(force_dir, close, atr,
                                               bot.df_ind, 5.0)
                 sig = dict(sig)
@@ -299,7 +299,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             else:
                 print(f"[MT5] ✗ Order gagal: {result_order.get('error')}")
 
-            from services.db_logger import save_cycle
+            from app.services.db_logger import save_cycle
             save_cycle(result, bot, _order_result)
             return True, result
 
@@ -340,7 +340,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
                 _order_result = exec_result
             elif exec_result.get("skipped"):
                 print(f"[MT5] Order di-skip: {exec_result.get('reason','posisi sudah ada / DCA menunggu')}")
-                from services.db_logger import save_order_skip
+                from app.services.db_logger import save_order_skip
                 save_order_skip(result, exec_result.get("reason", "skipped"))
             else:
                 print(f"[MT5] Order gagal: {exec_result.get('error')}")
@@ -387,14 +387,39 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             _sc_rr    = _sp_d.get("rr",           "-")
             _rule_dir = _sig_d.get("direction",  "WAIT")
 
+            # Log sinyal + analisis ke signal_analysis.jsonl
+            try:
+                from app.services.ai.signal_logger import log_signal as _log_sig
+                _sym = bot.symbol if hasattr(bot, 'symbol') else 'XAUUSD'
+                _logged_sid = _log_sig(_sp_d, symbol=_sym)
+                # Simpan ke connector agar bisa di-link saat order dibuka
+                if hasattr(bot, 'connector') and bot.connector is not None:
+                    bot.connector._last_signal_id = _logged_sid
+            except Exception:
+                _logged_sid = None
+
             print(f"  ── ScalpML ─────────────────────────────────────")
             print(f"  Arah       : {_sc_dir}  (prob BUY={_sc_pbuy:.3f}  SELL={_sc_psell:.3f})")
             print(f"  Confidence : {_sc_conf}  (prob dominan={_sc_prob:.3f})")
             print(f"  SL/TP/RR   : {_sc_sl} / {_sc_tp} / 1:{_sc_rr}")
 
             # Jelaskan keputusan ScalpML
+            _sc_reason = _sp_d.get("reason", "")
+            _sc_thr    = 0.62  # threshold aktif
+            try:
+                from app.services.ai.ml.predictor import ScalpingPredictor as _SP
+                import app.engine.bot as _bmod
+                if hasattr(_bmod, '_scalping_pred') and _bmod._scalping_pred:
+                    _sc_thr = _bmod._scalping_pred.prob_threshold
+            except Exception:
+                pass
             if _sc_dir == "WAIT":
-                print(f"  Keputusan  : WAIT — prob {_sc_prob:.3f} < threshold 0.52")
+                if "ATR_SPIKE" in _sc_reason or "VOLATILE" in _sc_conf:
+                    print(f"  Keputusan  : WAIT — pasar terlalu volatile (ATR spike)")
+                elif _sc_prob > 0:
+                    print(f"  Keputusan  : WAIT — prob {_sc_prob:.3f} < threshold {_sc_thr}")
+                else:
+                    print(f"  Keputusan  : WAIT — tidak ada sinyal")
             elif _sc_dir == _rule_dir and _rule_dir != "WAIT":
                 print(f"  Keputusan  : SETUJU dengan Rule ({_rule_dir}) → Rule+ScalpML")
             elif _sc_dir != _rule_dir and _rule_dir != "WAIT":
@@ -408,6 +433,16 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
                 else:
                     print(f"  Keputusan  : TIDAK CUKUP untuk ScalpML-Only — butuh prob>=0.65 + MEDIUM/HIGH")
                     print(f"             : saat ini prob={_sc_prob:.3f}  conf={_sc_conf}")
+
+            # ── Analisis Sinyal (candle reading) ──────────────────────
+            _s_notes = _sp_d.get("signal_notes",    [])
+            _s_warns = _sp_d.get("signal_warnings", [])
+            if _s_notes or _s_warns:
+                print(f"  ── Analisis Candle ─────────────────────────────")
+                for _n in _s_notes:
+                    print(f"  │ {_n}")
+                for _w in _s_warns:
+                    print(f"  │ ⚠ {_w}")
             print(f"  ────────────────────────────────────────────────")
 
     if mt4:
@@ -416,7 +451,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
         direction = sig.get("direction", "WAIT")
 
         if direction in ("BUY", "SELL") and news_risk != "HIGH":
-            from backend.broker.mt5_connector import SYMBOL_MAP
+            from app.engine.broker.mt5_connector import SYMBOL_MAP
             sym = SYMBOL_MAP.get(bot.symbol, bot.symbol)
             mt4.write_signal(
                 direction=direction,
@@ -427,7 +462,7 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
             )
 
     # Simpan ke DB setiap siklus
-    from services.db_logger import save_cycle
+    from app.services.db_logger import save_cycle
     save_cycle(result, bot, _order_result)
 
     return True, result
@@ -435,8 +470,8 @@ def run_analysis(bot: TradingBot, executor=None, mt4: MT4Bridge = None,
 
 def run_backtest_mode(symbol: str, timeframe: str, period: str = None):
     print(f"\n[~] Running backtest for {symbol} ({timeframe})...")
-    from backend.bot import fetch_data
-    from ai.indicators import add_all_indicators
+    from app.engine.bot import fetch_data
+    from app.engine.signals.indicators import add_all_indicators
 
     bt_period = period or BACKTEST_PERIOD
     raw = fetch_data(symbol, timeframe, bt_period)
@@ -507,7 +542,7 @@ def main():
         print(f"[!] Timeframe '{timeframe}' tidak valid. Pilih: {list(TIMEFRAMES.keys())}")
         sys.exit(1)
 
-    from ai.deep_model import TF_AVAILABLE
+    from app.services.ai.deep_model import TF_AVAILABLE
     use_lstm = args.lstm
     use_news = not args.no_news
 
@@ -635,7 +670,7 @@ def main():
         bot.news_filter.print_news_report(bot.news_sentiment)
 
     # Catat BOT_START ke DB + pastikan kolom outcome ada
-    from services.db_logger import save_bot_start, save_bot_stop, ensure_outcome_columns
+    from app.services.db_logger import save_bot_start, save_bot_stop, ensure_outcome_columns
     mt_mode = "MT5" if executor else ("MT4" if mt4_bridge else "ANALYSIS")
     ensure_outcome_columns()
     save_bot_start(symbol, timeframe, mode=mt_mode)
@@ -657,7 +692,7 @@ def main():
                 # MARKET CLOSED — Deep Analysis Mode
                 # ══════════════════════════════════════════════════════════════
                 try:
-                    from data.session_bias import is_market_closed, run_market_close_deep_analysis
+                    from app.services.session_bias import is_market_closed, run_market_close_deep_analysis
                     _closed = is_market_closed(mt5_conn)
                 except Exception:
                     _closed = False
@@ -704,7 +739,7 @@ def main():
 
                 # ── Session Close Analysis (saat session mau tutup) ──────────
                 try:
-                    from data.session_bias import (
+                    from app.services.session_bias import (
                         is_near_session_close, was_analyzed_recently,
                         run_close_analysis, print_current_bias,
                     )
@@ -727,7 +762,7 @@ def main():
 
                 # Tampilkan pre-session plan jika ada
                 try:
-                    from data.session_bias import get_session_plan, print_current_bias
+                    from app.services.session_bias import get_session_plan, print_current_bias
                     plan = get_session_plan()
                     if plan:
                         bias_dir = plan.get("htf_bias", "NEUTRAL")
@@ -749,8 +784,8 @@ def main():
                     closed_now = executor.sync_closed_positions()
                     if closed_now:
                         try:
-                            from ai.adaptive import get_learner
-                            from data.trade_journal import JOURNAL_PATH
+                            from app.services.ai.adaptive import get_learner
+                            from app.services.journal import JOURNAL_PATH
                             import pandas as _jdf
                             import config as _cfg
 
@@ -809,7 +844,7 @@ def main():
                         except Exception as _ae:
                             pass
 
-                from data.trade_journal import print_stats
+                from app.services.journal import print_stats
                 _daily_info = None
                 if executor:
                     _start_bal = getattr(executor, "_daily_start_balance", 0.0)
@@ -835,7 +870,7 @@ def main():
                     _wc = _lc = 0
                     try:
                         import pandas as _pd
-                        from data.trade_journal import JOURNAL_PATH
+                        from app.services.journal import JOURNAL_PATH
                         import os as _os
                         if _os.path.exists(JOURNAL_PATH):
                             _jdf = _pd.read_csv(JOURNAL_PATH, dtype=str)
@@ -868,7 +903,7 @@ def main():
                         _pf_str = ""
                         try:
                             import pandas as _pd2
-                            from data.trade_journal import JOURNAL_PATH
+                            from app.services.journal import JOURNAL_PATH
                             import os as _os2
                             _today_str2 = __import__("datetime").date.today().isoformat()
                             if _os2.path.exists(JOURNAL_PATH):
@@ -907,7 +942,7 @@ def main():
                         main._cycle_count = 0
                     main._cycle_count += 1
                     if main._cycle_count % 10 == 0:
-                        from ai.adaptive import get_learner
+                        from app.services.ai.adaptive import get_learner
                         get_learner().print_report()
                 except Exception:
                     pass

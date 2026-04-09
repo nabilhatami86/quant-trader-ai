@@ -55,8 +55,8 @@ def run_backtest(period: str = "60d",
 # ---------------------------------------------
 
 def _run(period: str, verbose: bool, save_csv: bool) -> dict:
-    from ai.indicators import add_all_indicators
-    from ai.signals    import generate_signal
+    from app.engine.signals.indicators import add_all_indicators
+    from app.engine.signals.signals import generate_signal
     from config import ATR_MULTIPLIER_SL, ATR_MULTIPLIER_TP, MIN_SL_PIPS
 
     GREEN  = "\033[92m"

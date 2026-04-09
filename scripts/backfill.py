@@ -26,7 +26,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
 
     if use_mt5:
         try:
-            from backend.broker.mt5_connector import MT5Connector
+            from app.engine.broker.mt5_connector import MT5Connector
             mt5 = MT5Connector()
             if mt5.connect():
                 count_map = {
@@ -42,7 +42,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
             print(f"[!] MT5 error: {e} — fallback ke Yahoo Finance")
 
     if df_raw is None or (hasattr(df_raw, "empty") and df_raw.empty):
-        from backend.bot import fetch_data
+        from app.engine.bot import fetch_data
         period_map = {
             "1m": "7d", "5m": "60d", "15m": "60d",
             "1h": "730d", "4h": "730d", "1d": "5y",
@@ -57,7 +57,7 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
           f"({str(df_raw.index[0])[:10]} → {str(df_raw.index[-1])[:10]})")
 
     # 2. Hitung indikator
-    from ai.indicators import add_all_indicators
+    from app.engine.signals.indicators import add_all_indicators
     try:
         df_ind = add_all_indicators(df_raw)
     except Exception as e:
@@ -67,13 +67,13 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
     print(f"  Indikator: OK ({len(df_ind)} candle valid)")
 
     # 3. Simpan ke candle DB (CSV)
-    from data.candle_db import save_candles
+    from app.services.candle_db import save_candles
     saved_db = save_candles(df_raw, symbol, timeframe)
     if saved_db > 0:
         print(f"  Candle DB : +{saved_db} candle baru  (CSV)")
 
     # 4. Backfill candle log (CSV)
-    from data.candle_log import backfill_candle_log
+    from app.services.candle_log import backfill_candle_log
     added = backfill_candle_log(symbol, timeframe, df_ind)
     if added > 0:
         print(f"  Candle Log: +{added} candle ditulis  (CSV)")
@@ -93,10 +93,10 @@ def backfill(symbol: str, timeframe: str, use_mt5: bool = False) -> None:
 
 async def _save_all_pg(df_raw, df_ind, symbol: str, timeframe: str):
     """Satu coroutine untuk semua DB operations — hindari multi asyncio.run()."""
-    from db.database import AsyncSessionLocal, engine
-    from db.crud.candles import bulk_upsert_candles
-    from db.crud.candle_logs import bulk_upsert_candle_logs
-    from db.crud.tx_log import log_event
+    from app.database.session import AsyncSessionLocal, engine
+    from app.database.crud.candles import bulk_upsert_candles
+    from app.database.crud.candle_logs import bulk_upsert_candle_logs
+    from app.database.crud.tx_log import log_event
 
     pg_candles = 0
     pg_logs    = 0

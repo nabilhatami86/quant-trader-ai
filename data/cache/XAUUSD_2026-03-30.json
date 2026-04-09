@@ -1,0 +1,588 @@
+{
+  "date": "2026-03-30",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "Private credit's cracks open door for Wall Street banks' comeback: 'The tug of war is just starting'",
+      "source": "CNBC Finance",
+      "published": "Fri, 27 Mar 2026 06:15:02 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/27/wall-street-banks-private-credit-market-share-leveraged-loans.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Sen. Warren rips Federal Reserve chair pick Kevin Warsh: 'You have learned nothing from your failures'",
+      "source": "CNBC Finance",
+      "published": "Fri, 27 Mar 2026 15:52:49 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/26/federal-reserve-kevin-walsh-elizabeth-warren-trump.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Jamie Dimon says Iran war makes Middle East peace prospects better in the long term",
+      "source": "CNBC Finance",
+      "published": "Tue, 24 Mar 2026 18:14:24 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/24/jamie-dimon-iran-war-middle-east-peace-prospects-long-term.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "BlackRock’s Larry Fink warns against market timing, says missing best days can halve returns",
+      "source": "CNBC Finance",
+      "published": "Mon, 23 Mar 2026 14:06:43 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/23/blackrocks-larry-fink-warns-against-trying-to-time-the-market-.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Fed's Goolsbee says he's worried about inflation in 'fraught but intense' climate",
+      "source": "CNBC Finance",
+      "published": "Mon, 23 Mar 2026 16:39:56 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/23/feds-goolsbee-says-hes-worried-about-inflation-in-fraught-but-intense-climate.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Fed Governor Waller urges caution for now, says rate cuts possible later in the year",
+      "source": "CNBC Finance",
+      "published": "Fri, 20 Mar 2026 13:36:43 GMT",
+      "impact": "LOW",
+      "url": "https://www.cnbc.com/2026/03/20/fed-gov-waller-urges-caution-for-now-cuts-possible-later-in-the-year.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Copper joins gold in broad commodities sell-off. There's a worrying reason behind it",
+      "source": "CNBC Finance",
+      "published": "Fri, 20 Mar 2026 14:47:14 GMT",
+      "impact": "LOW",
+      "url": "https://www.cnbc.com/2026/03/19/copper-joins-gold-in-broad-commodities-sell-off-theres-a-worrying-reason-behind-it.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Here are the five key takeaways from this week's Fed meeting",
+      "source": "CNBC Finance",
+      "published": "Thu, 19 Mar 2026 03:01:27 GMT",
+      "impact": "LOW",
+      "url": "https://www.cnbc.com/2026/03/18/here-are-the-five-key-takeaways-from-this-weeks-fed-meeting.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "U.S. Treasury to consult insurance regulators on rising private credit risks: report",
+      "source": "Seeking Alpha",
+      "published": "Mon, 30 Mar 2026 01:58:54 -0400",
+      "impact": "LOW",
+      "url": "https://seekingalpha.com/news/4570056-us-treasury-to-consult-insurance-regulators-on-rising-private-credit-risks-report?utm_source=feed_news_all&utm_medium=referral&feed_item_type=news",
+      "source_api": "Seeking Alpha",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Ideal Power files to sell 631,332 shares via pre-funded warrants",
+      "source": "Seeking Alpha",
+      "published": "Mon, 30 Mar 2026 01:32:10 -0400",
+      "impact": "HIGH",
+      "url": "https://seekingalpha.com/news/4570050-ideal-power-files-to-sell-631332-shares-via-pre-funded-warrants?utm_source=feed_news_all&utm_medium=referral&feed_item_type=news",
+      "source_api": "Seeking Alpha",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Silver Price Forecast: XAG/USD rises above $70 despite Iran war escalates",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 06:05:05 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/silver-price-forecast-xag-usd-rises-above-70-despite-iran-war-escalates-202603300605",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold sticks to positive bias above $4,500 on softer USD; bearish potential seems intact",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 05:21:52 Z",
+      "impact": "LOW",
+      "url": "https://www.fxstreet.com/news/gold-edges-higher-amid-modest-usd-downtick-hawkish-fed-bets-and-bearish-setup-cap-gains-202603300403",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "US Dollar Index (DXY) Price Forecast: Dips to 100.00, hawkish Fed bets to limit losses",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 05:10:33 Z",
+      "impact": "LOW",
+      "url": "https://www.fxstreet.com/news/us-dollar-index-dxy-price-forecast-dips-to-10000-hawkish-fed-bets-to-limit-losses-202603300510",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "USD/JPY Price Forecast: Eyes mid-159.00s on intervention warnings; downside seems limited",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 04:31:22 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/usd-jpy-price-forecast-eyes-mid-15900s-on-intervention-warnings-downside-seems-limited-202603300431",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "US Dollar Index trades broadly firm above 100.00 amid fears of widening Iran conflicts",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 02:00:05 Z",
+      "impact": "MEDIUM",
+      "url": "https://www.fxstreet.com/news/us-dollar-index-trades-broadly-firm-above-10000-amid-fears-of-widening-iran-conflicts-202603300200",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "GBP/JPY drops to one-week low, below 212.00 as JPY strengthens amid intervention warning",
+      "source": "FXStreet",
+      "published": "Mon, 30 Mar 2026 01:45:54 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/gbp-jpy-drops-to-one-week-low-below-21200-as-jpy-strengthens-amid-intervention-warning-202603300145",
+      "source_api": "FXStreet",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Bitcoin set for weekly loss as Iran war, $14 bln options expiry roils sentiment",
+      "source": "Investing.com Gold",
+      "published": "2026-03-28 09:14:37",
+      "impact": "HIGH",
+      "url": "https://www.investing.com/news/cryptocurrency-news/bitcoin-falls-to-68k-as-iran-uncertainty-persists-ahead-of-14-bln-options-expiry-4584128",
+      "source_api": "Investing.com Gold",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Bitcoin set to end the week lower amid risk aversion as the Iran war rages on",
+      "source": "Investing.com Gold",
+      "published": "2026-03-27 23:03:01",
+      "impact": "HIGH",
+      "url": "https://www.investing.com/news/cryptocurrency-news/bitcoin-set-to-end-the-week-lower-amid-risk-aversion-as-the-iran-war-rages-on-4586235",
+      "source_api": "Investing.com Gold",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold prices rise slightly with Iran war escalation in focus",
+      "source": "Investing.com Comm",
+      "published": "2026-03-30 03:25:49",
+      "impact": "HIGH",
+      "url": "https://www.investing.com/news/commodities-news/gold-prices-rise-slightly-with-iran-war-escalation-in-focus-4586650",
+      "source_api": "Investing.com Comm",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Leading broker sees gold falling to $3,700 as a real possibility",
+      "source": "Investing.com Comm",
+      "published": "2026-03-28 09:02:42",
+      "impact": "LOW",
+      "url": "https://www.investing.com/news/commodities-news/leading-broker-sees-gold-falling-to-3700-as-a-real-possibility-4586485",
+      "source_api": "Investing.com Comm",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Swiss National Bank cuts interest rates by a half point to 0.5%",
+      "source": "MarketWatch",
+      "published": "Thu, 12 Dec 2024 08:32:00 GMT",
+      "impact": "HIGH",
+      "url": "https://www.marketwatch.com/story/swiss-national-bank-cuts-interest-rates-by-a-half-point-to-0-5-ed1fce78?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Powell says labor market not a source of significant inflation pressure",
+      "source": "MarketWatch",
+      "published": "Wed, 31 Jul 2024 18:48:00 GMT",
+      "impact": "HIGH",
+      "url": "https://www.marketwatch.com/story/powell-says-labor-market-not-a-source-of-significant-inflation-pressure-cc3b1297?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Fed’s Powell says rate cut ‘on the table’ as soon as September",
+      "source": "MarketWatch",
+      "published": "Wed, 31 Jul 2024 18:41:00 GMT",
+      "impact": "LOW",
+      "url": "https://www.marketwatch.com/story/feds-powell-says-rate-cut-on-the-table-as-soon-as-september-f3f7c8f2?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "GOLD BUY NOW TO 4,611",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:27:39 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/uno5uEig-GOLD-BUY-NOW-TO-4-611/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold prices recovered at the beginning of the week: 4600",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:21:58 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/pDZIJMFl-Gold-prices-recovered-at-the-beginning-of-the-week-4600/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD Bearish setup (4H)",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:14:39 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/v99LkCQ3-XAUUSD-Bearish-setup-4H/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold market Technical Trend Analysis",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:13:33 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/URMLFr9D-Gold-market-Technical-Trend-Analysis/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD: The Macro Shift (Weekly to 4H Analysis)",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:09:58 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/Dij4MHUP-XAUUSD-The-Macro-Shift-Weekly-to-4H-Analysis/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD Review March 30 2026",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:06:32 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/hribXikq-XAUUSD-Review-March-30-2026/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold at 4555 – Sweep highs or drop first?",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:04:57 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/Pl71g9O9-Gold-at-4555-Sweep-highs-or-drop-first/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "GOLD - Waiting for a breakout to break through!!",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 06:00:52 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/MNKPGByH-GOLD-Waiting-for-a-breakout-to-break-through/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD (Gold Spot) - BUY Signal",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:54:07 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/jFx74RMJ-XAUUSD-Gold-Spot-BUY-Signal/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD: The Bull Trap Before the Deep Discount?",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:51:05 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/7th96hFr-XAUUSD-The-Bull-Trap-Before-the-Deep-Discount/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:42:24 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/Ijp7nLMw-Gold/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold is showing a strong bullish trend",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:41:53 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/WhnFnqDz-Gold-is-showing-a-strong-bullish-trend/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold Trend and Trading Strategy",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:37:35 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/70Y57Bgc-Gold-Trend-and-Trading-Strategy/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold Retest Fails While Oil Surges —Safe Haven or Liquidity Trap",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:28:59 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/Wkfy3tqw-Gold-Retest-Fails-While-Oil-Surges-Safe-Haven-or-Liquidity-Trap/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD H1 SELL 4550 TO 4600",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:23:16 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/Bm00Xcbo-XAUUSD-H1-SELL-4550-TO-4600/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD – Liquidity Continuation Setup",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:22:55 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/8tu8wkg9-XAUUSD-Liquidity-Continuation-Setup/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold Price Analysis Today – Bearish Pressure Continues",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:17:12 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/GMcdyjPd-Gold-Price-Analysis-Today-Bearish-Pressure-Continues/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD SELL SETUP",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:17:09 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/8T0GEof1-XAUUSD-SELL-SETUP/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "GOLD MARKET TREND ANALYSIS (TECHNICAL ANALYSIS)",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:12:36 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/L1x6T8Ov-GOLD-MARKET-TREND-ANALYSIS-TECHNICAL-ANALYSIS/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "XAUUSD Institutional Flow Suggests Bullish Expansion",
+      "source": "TradingView Ideas",
+      "published": "Mon, 30 Mar 2026 05:06:16 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/TcygKg5Y-XAUUSD-Institutional-Flow-Suggests-Bullish-Expansion/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Strikes Continue as Houthis Join Iran War, Raising Escalation Fears",
+      "source": "Bloomberg Markets",
+      "published": "Mon, 30 Mar 2026 06:02:42 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/videos/2026-03-30/strikes-continue-as-houthis-join-iran-war-raising-escalation-fears",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Stocks Drop, Oil Up on Fears of Widening Iran War: Markets Wrap",
+      "source": "Bloomberg Markets",
+      "published": "Sun, 29 Mar 2026 19:31:25 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-03-29/investor-unease-builds-entering-war-s-fifth-week-markets-wrap",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "FTSE 100 Set to Fall on Iran War Escalation Worries",
+      "source": "Bloomberg Markets",
+      "published": "Mon, 30 Mar 2026 05:52:04 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/live-blog/2026-03-30/ftse-100-live-iran-war-trump-pound-gilts-usd-gold-oil-prices-what-s-moving-uk-markets-right-now-markets-today-mncrtj9b",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Fears of Widening Iran War Grow | The China Show 3/30/2026",
+      "source": "Bloomberg Markets",
+      "published": "Mon, 30 Mar 2026 05:26:34 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/videos/2026-03-30/the-china-show-3-30-2026-video",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Iran War Escalation Triggers Risk Aversion | The Asia Trade 3/30/2026",
+      "source": "Bloomberg Markets",
+      "published": "Mon, 30 Mar 2026 05:26:05 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/videos/2026-03-30/the-asia-trade-3-30-2026-video",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Israel Approves Revised War Budget Extending Reliance on Debt",
+      "source": "Bloomberg Markets",
+      "published": "Mon, 30 Mar 2026 04:30:38 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-03-30/israel-approves-revised-war-budget-extending-reliance-on-debt",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Oil Gains as Iran War Escalates With Houthi Attacks on Israel",
+      "source": "Bloomberg Markets",
+      "published": "Sun, 29 Mar 2026 22:04:09 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-03-29/latest-oil-market-news-and-analysis-for-march-30",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Bond managers warn markets underestimate growth risks from Iran war",
+      "source": "ForexLive",
+      "published": "Sun, 29 Mar 2026 23:33:15 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/bond-managers-warn-markets-underestimate-growth-risks-from-iran-war-20260329/",
+      "source_api": "ForexLive",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "investingLive Americas market news wrap: Oil prices surge as war worries mount",
+      "source": "ForexLive",
+      "published": "Fri, 27 Mar 2026 20:27:14 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/investinglive-americas-market-news-wrap-oil-prices-surge-as-war-worries-mount-20260327/",
+      "source_api": "ForexLive",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Secretary of State Rubio said that the war with Iran will continue for another 4 weeks",
+      "source": "ForexLive",
+      "published": "Fri, 27 Mar 2026 16:46:18 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/secretary-of-state-rubio-said-that-the-war-with-iran-will-continue-for-another-4-weeks-20260327/",
+      "source_api": "ForexLive",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "IRGC warns that Strait of Hormuz remains \"closed\", prohibits any passage by US allies",
+      "source": "ForexLive",
+      "published": "Fri, 27 Mar 2026 10:17:24 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/irgc-warns-that-strait-of-hormuz-remains-closed-prohibits-any-passage-by-us-allies-20260327/",
+      "source_api": "ForexLive",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Ray Dalio Flags 'Risky Times' — And Warns Cash May Be The Worst Place To Hide",
+      "source": "Benzinga",
+      "published": "2026-03-29T17:31:09Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/stocks/articles/ray-dalio-flags-risky-times-173109810.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Why It's Not Time to Give Up on the Gold Trade",
+      "source": "MarketBeat",
+      "published": "2026-03-28T14:07:00Z",
+      "impact": "LOW",
+      "url": "https://www.marketbeat.com/originals/why-its-not-time-to-give-up-on-the-gold-trade/?utm_source=yahoofinance&utm_medium=yahoofinance",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "What's the Better Buy to Save for Retirement: Bitcoin vs. Gold",
+      "source": "Motley Fool",
+      "published": "2026-03-28T08:20:00Z",
+      "impact": "LOW",
+      "url": "https://www.fool.com/investing/2026/03/28/whats-the-better-buy-to-save-for-retirement-bitcoi/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "The Iran War Started 1 Month Ago. What It’s Meant for Stocks, Bonds, and Oil.",
+      "source": "Barrons.com",
+      "published": "2026-03-27T18:24:00Z",
+      "impact": "HIGH",
+      "url": "https://www.barrons.com/articles/iran-war-one-month-markets-stocks-gold-oil-bonds-56fd2d18?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Update: Gold Rebounds from a Three-Month Low Despite a Higher Dollar",
+      "source": "MT Newswires",
+      "published": "2026-03-27T18:00:17Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-rebounds-three-month-low-180017501.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold Rebounds from a Three-Month Low Despite a Higher Dollar",
+      "source": "MT Newswires",
+      "published": "2026-03-27T13:29:55Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-rebounds-three-month-low-132955422.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Gold Falls 15% as Central Banks Reassess $4.3 Trillion Reserves",
+      "source": "GuruFocus.com",
+      "published": "2026-03-26T18:14:49Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-falls-15-central-banks-181449200.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    },
+    {
+      "title": "Update: Gold Falls as Investors Turn to the Dollar With the War on Iran Threatening Higher Inflation",
+      "source": "MT Newswires",
+      "published": "2026-03-26T18:00:23Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-falls-investors-turn-dollar-180023874.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-30"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Fed Chair Powell Speaks",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-03-30",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "FOMC Member Williams Speaks",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-03-30",
+      "source_api": "ForexFactory Calendar"
+    }
+  ]
+}

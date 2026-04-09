@@ -1,0 +1,137 @@
+{
+  "date": "2026-03-19",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "The Fed Expects Inflation to Stay High. Here Are Moves to Make With Your Portfolio.",
+      "source": "Barrons.com",
+      "published": "2026-03-18T21:37:00Z",
+      "impact": "HIGH",
+      "url": "https://www.barrons.com/articles/fed-inflation-retirement-portfolio-stocks-bonds-562fb087?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Update: Gold Falls to a Six-Week Low as U.S. Wholesale Prices Surged Last Month, Lowering Rate-Cut Hopes",
+      "source": "MT Newswires",
+      "published": "2026-03-18T18:00:07Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/gold-falls-six-week-low-180007761.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Gold Holds Near $5,000 as Fed Outlook and Middle East Tensions Collide",
+      "source": "GuruFocus.com",
+      "published": "2026-03-18T17:22:55Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/gold-holds-near-5-000-172255255.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Gold Falls to a Six-Week Low as U.S. Wholesale Prices Surged Last Month, Lowering Rate-Cut Hopes",
+      "source": "MT Newswires",
+      "published": "2026-03-18T13:11:56Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/gold-falls-six-week-low-131156849.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Does This 1 New Trend Mean You Should Sell Gold and Buy Bitcoin Right Now?",
+      "source": "Motley Fool",
+      "published": "2026-03-18T09:20:00Z",
+      "impact": "LOW",
+      "url": "https://www.fool.com/investing/2026/03/18/does-this-1-new-trend-mean-you-should-sell-gold-an/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "GLD- An ETF to Help You Profit from $6,000 Gold",
+      "source": "MoneyShow",
+      "published": "2026-03-18T05:01:00Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gld-etf-help-profit-6-050100384.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    },
+    {
+      "title": "Update: Gold Holds Above US$5,000 as the Dollar Weakens Ahead of Tomorrow's Fed Rate Decision",
+      "source": "MT Newswires",
+      "published": "2026-03-17T18:00:03Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/news/gold-holds-above-us-5-180003136.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-19"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Unemployment Claims",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "215K",
+      "previous": "213K",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Philly Fed Manufacturing Index",
+      "country": "USD",
+      "time": "",
+      "impact": "MEDIUM",
+      "forecast": "8.3",
+      "previous": "16.3",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "New Home Sales",
+      "country": "USD",
+      "time": "",
+      "impact": "MEDIUM",
+      "forecast": "722K",
+      "previous": "745K",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "CB Leading Index m/m",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "-0.1%",
+      "previous": "-0.2%",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Final Wholesale Inventories m/m",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "0.2%",
+      "previous": "0.2%",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Natural Gas Storage",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "39B",
+      "previous": "-38B",
+      "actual": "",
+      "date": "2026-03-19",
+      "source_api": "ForexFactory Calendar"
+    }
+  ]
+}

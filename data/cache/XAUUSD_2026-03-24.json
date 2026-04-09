@@ -1,0 +1,168 @@
+{
+  "date": "2026-03-24",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "Gold ETF Extends Losing Streak",
+      "source": "The Wall Street Journal",
+      "published": "2026-03-23T20:52:59Z",
+      "impact": "LOW",
+      "url": "https://www.wsj.com/livecoverage/stock-market-today-dow-sp-500-nasdaq-03-23-2026/card/gold-etf-extends-losing-streak-yeYt1EL7d4463Ck2IbJs?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Update: Gold Continues Its Retreat, Falling to a Near-Three Month Low on Interest-Rate Concerns",
+      "source": "MT Newswires",
+      "published": "2026-03-23T18:00:13Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-continues-retreat-falling-near-180013198.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Options Traders Are Really Bearish on Gold",
+      "source": "The Wall Street Journal",
+      "published": "2026-03-23T17:15:03Z",
+      "impact": "LOW",
+      "url": "https://www.wsj.com/livecoverage/stock-market-today-dow-sp-500-nasdaq-03-23-2026/card/options-traders-are-really-bearish-on-gold-ajwUIbQxH6bYzFatGRDR?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Revisiting Gold Prices and the S&P 500. Where They Stand Now.",
+      "source": "Barrons.com",
+      "published": "2026-03-23T16:40:00Z",
+      "impact": "LOW",
+      "url": "https://www.barrons.com/articles/revisiting-gold-prices-s-p-500-where-they-stand-99bd7e40?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Gold's Fall Reverses After Trump Signals 'Productive' Talks With Iran",
+      "source": "Investopedia",
+      "published": "2026-03-23T15:18:20Z",
+      "impact": "LOW",
+      "url": "https://www.investopedia.com/gold-s-fall-reverses-after-trump-signals-productive-talks-with-iran-silver-bitcoin-hormuz-11932088",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Why Gold Isn't the Shield It Promised to Be | Streetwise",
+      "source": "The Wall Street Journal",
+      "published": "2026-03-23T13:26:41Z",
+      "impact": "LOW",
+      "url": "https://www.wsj.com/livecoverage/stock-market-today-dow-sp-500-nasdaq-03-23-2026/card/why-gold-isn-t-the-shield-it-promised-to-be-streetwise-k9koBLEi15vt9PYj7xDD?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Gold Continues Its Retreat, Falling to a Near-Three Month Low on Interest-Rate Concerns",
+      "source": "MT Newswires",
+      "published": "2026-03-23T13:10:16Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-continues-retreat-falling-near-131016537.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    },
+    {
+      "title": "Gold ETFs Log Worst Week in 15 Years Amid Iran War Jitters: Buy the Dip?",
+      "source": "Zacks",
+      "published": "2026-03-23T12:00:00Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-etfs-log-worst-week-120000527.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-24"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "ADP Weekly Employment Change",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "9.0K",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Revised Nonfarm Productivity q/q",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "1.9%",
+      "previous": "2.8%",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Revised Unit Labor Costs q/q",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "3.6%",
+      "previous": "2.8%",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Flash Manufacturing PMI",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "51.5",
+      "previous": "51.2",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Flash Services PMI",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "52.0",
+      "previous": "52.3",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Richmond Manufacturing Index",
+      "country": "USD",
+      "time": "",
+      "impact": "MEDIUM",
+      "forecast": "-8",
+      "previous": "-10",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "API Weekly Statistical Bulletin",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "FOMC Member Barr Speaks",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-03-24",
+      "source_api": "ForexFactory Calendar"
+    }
+  ]
+}
