@@ -171,7 +171,7 @@ section("3. INDICATOR CALCULATION (data sintetis)")
 try:
     import pandas as pd
     import numpy as np
-    from ai.indicators import add_all_indicators
+    from app.engine.signals.indicators import add_all_indicators
 
     # Buat data OHLCV sintetis (200 candle, Gold price range)
     np.random.seed(42)
@@ -235,7 +235,7 @@ except Exception as e:
 section("4. SIGNAL GENERATION")
 
 try:
-    from ai.signals import generate_signal
+    from app.engine.signals.signals import generate_signal
 
     if df_ind is not None:
         # generate_signal(df, news_bias=None, news_risk="LOW", candle_memory=None)
@@ -296,7 +296,7 @@ except Exception as e:
 section("5. ML MODEL (train + predict)")
 
 try:
-    from ai.model import CandlePredictor
+    from app.services.ai.model import CandlePredictor
     import config as cfg_ml
 
     predictor = CandlePredictor(timeframe="5m")
@@ -355,7 +355,7 @@ except Exception as e:
 section("6. ADAPTIVE LEARNER")
 
 try:
-    from ai.adaptive import AdaptiveLearner, get_learner
+    from app.services.ai.adaptive import AdaptiveLearner, get_learner
 
     learner = AdaptiveLearner()
     ok("AdaptiveLearner init OK")
@@ -583,7 +583,7 @@ except Exception as e:
 section("11. DB LOGGER")
 
 try:
-    import services.db_logger as dbl_mod
+    import app.services.db_logger as dbl_mod
 
     # db_logger pakai module-level functions
     required_fns = ["save_cycle", "save_order_skip", "save_candles_batch",
@@ -616,7 +616,7 @@ except Exception as e:
 section("12. MT5 CONNECTOR (struktur & logika)")
 
 try:
-    from backend.broker.mt5_connector import MT5Connector, SYMBOL_MAP
+    from app.engine.broker.mt5_connector import MT5Connector, SYMBOL_MAP
 
     # Test SYMBOL_MAP
     if "XAUUSD" in SYMBOL_MAP:
@@ -637,7 +637,7 @@ try:
 
     # Test should_trade logic kalau punya metode
     # should_trade ada di SignalExecutor, bukan MT5Connector
-    from backend.broker.mt5_connector import SignalExecutor
+    from app.engine.broker.mt5_connector import SignalExecutor
     if hasattr(SignalExecutor, "should_trade"):
         ok("SignalExecutor.should_trade metode ada")
     else:
@@ -663,7 +663,7 @@ except Exception as e:
 section("13. BOT CLASS (tanpa MT5)")
 
 try:
-    import backend.bot as bot_mod
+    import app.engine.bot as bot_mod
 
     # Cek kelas/fungsi yang ada
     bot_attrs = [a for a in dir(bot_mod) if not a.startswith("_")]
@@ -711,7 +711,7 @@ except Exception as e:
 section("14. SIGNAL QUALITY CHECKS")
 
 try:
-    from ai.signals import generate_signal
+    from app.engine.signals.signals import generate_signal
     import config as cfg_sq
 
     if df_ind is not None and len(df_ind) >= 50:

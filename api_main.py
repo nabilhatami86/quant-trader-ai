@@ -17,15 +17,23 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import settings
-from core.logging import setup_logging
-from core.security import verify_api_key
-from db.database import create_tables
-from services.bot_service import bot_service
-from api.routes import signal, trade, journal, backtest, webhook, txlog
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.core.security import verify_api_key
+from app.database.session import create_tables
+from app.services.bot_service import bot_service
+from app.api.routes import signal, trade, journal, backtest, webhook, txlog
+from app.api.routes import positions, adaptive, analysis, stats, bot_control, ws as ws_route, settings as settings_route
 
 # Setup logging sebelum apapun
 setup_logging(debug=settings.DEBUG)
+
+# Restore runtime settings override dari file (jika ada)
+try:
+    from app.api.routes.settings import _apply_runtime_on_startup
+    _apply_runtime_on_startup()
+except Exception:
+    pass
 logger = logging.getLogger("trader_ai")
 
 
@@ -61,7 +69,7 @@ async def lifespan(app: FastAPI):
     executor = None
     if settings.BOT_USE_MT5:
         try:
-            from backend.broker.mt5_connector import MT5Connector, SignalExecutor
+            from app.engine.broker.mt5_connector import MT5Connector, SignalExecutor
             mt5_connector = MT5Connector()
             if mt5_connector.connect(
                 login=settings.MT5_LOGIN,
@@ -172,8 +180,8 @@ async def lifespan(app: FastAPI):
 
     # Catat BOT_START ke tx_log
     try:
-        from db.database import AsyncSessionLocal
-        from db.crud.tx_log import log_event
+        from app.database.session import AsyncSessionLocal
+        from app.database.crud.tx_log import log_event
         async with AsyncSessionLocal() as db:
             await log_event(
                 db,
@@ -199,8 +207,8 @@ async def lifespan(app: FastAPI):
             pass
 
     try:
-        from db.database import AsyncSessionLocal
-        from db.crud.tx_log import log_event
+        from app.database.session import AsyncSessionLocal
+        from app.database.crud.tx_log import log_event
         async with AsyncSessionLocal() as db:
             await log_event(
                 db,
@@ -244,6 +252,14 @@ app.include_router(journal.router)
 app.include_router(backtest.router)
 app.include_router(webhook.router)
 app.include_router(txlog.router)
+# ── New routes ────────────────────────────────────────────────────────────────
+app.include_router(positions.router)
+app.include_router(adaptive.router)
+app.include_router(analysis.router)
+app.include_router(stats.router)
+app.include_router(bot_control.router)
+app.include_router(ws_route.router)   # WebSocket /ws/live
+app.include_router(settings_route.router)  # /settings
 
 
 # ── Health endpoints ──────────────────────────────────────────────────────────

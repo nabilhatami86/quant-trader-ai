@@ -1,0 +1,88 @@
+{
+  "date": "2026-03-20",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "Update: Gold Prices Plunge as Hopes for Lower U.S. Interest Rates Fade",
+      "source": "MT Newswires",
+      "published": "2026-03-19T18:00:07Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-prices-plunge-hopes-lower-180007611.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "Gold Drops 1.2% to $4,760 as Oil Surge Clouds Fed Rate Path",
+      "source": "GuruFocus.com",
+      "published": "2026-03-19T16:14:23Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-drops-1-2-4-161423358.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "The 12% Yield Gold Income ETF That Nobody Knows About",
+      "source": "24/7 Wall St.",
+      "published": "2026-03-19T14:07:41Z",
+      "impact": "LOW",
+      "url": "https://247wallst.com/investing/2026/03/19/the-12-yield-gold-income-etf-that-nobody-knows-about/",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "Bybit Offers Interest Payments On Tokenized Gold",
+      "source": "CryptoProwl",
+      "published": "2026-03-19T13:49:00Z",
+      "impact": "LOW",
+      "url": "https://www.cryptoprowl.com/releases/bybit-offers-interest-payments-on-tokenized-gold-3906",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "Gold Prices Plunge 7.3% as Hopes for Lower U.S. Interest Rates Fade",
+      "source": "MT Newswires",
+      "published": "2026-03-19T13:37:23Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-prices-plunge-7-3-133723637.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "GLD, SLV Slide As Fed Holds Rates",
+      "source": "GuruFocus.com",
+      "published": "2026-03-19T10:07:45Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gld-slv-slide-fed-holds-100745210.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "The Fed Expects Inflation to Stay High. Here Are Moves to Make With Your Portfolio.",
+      "source": "Barrons.com",
+      "published": "2026-03-18T21:37:00Z",
+      "impact": "HIGH",
+      "url": "https://www.barrons.com/articles/fed-inflation-retirement-portfolio-stocks-bonds-562fb087?siteid=yhoof2&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "Update: Gold Falls to a Six-Week Low as U.S. Wholesale Prices Surged Last Month, Lowering Rate-Cut Hopes",
+      "source": "MT Newswires",
+      "published": "2026-03-18T18:00:07Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/gold-falls-six-week-low-180007761.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    },
+    {
+      "title": "Gold Holds Near $5,000 as Fed Outlook and Middle East Tensions Collide",
+      "source": "GuruFocus.com",
+      "published": "2026-03-18T17:22:55Z",
+      "impact": "LOW",
+      "url": "https://finance.yahoo.com/news/gold-holds-near-5-000-172255255.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-03-20"
+    }
+  ],
+  "calendar": []
+}

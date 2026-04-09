@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "last_updated": "2026-04-07 21:59:27",
-  "total_trades": 722,
+  "last_updated": "2026-04-09 14:38:23",
+  "total_trades": 771,
   "recent_window": 20,
   "indicator_hits": {},
   "source_hits": {
     "TraderAI-Bot": {
-      "win": 268,
-      "loss": 454
+      "win": 282,
+      "loss": 489
     }
   },
   "base_min_score": 4.0,
@@ -156,496 +156,6 @@
   ],
   "recent_trades": [
     {
-      "ticket": 3852184986,
-      "result": "LOSS",
-      "pnl": -6.47,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:27:36",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852255788,
-      "result": "WIN",
-      "pnl": 0.9,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:32:59",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852299422,
-      "result": "WIN",
-      "pnl": 3.35,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:38:23",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852352431,
-      "result": "LOSS",
-      "pnl": -3.34,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:46:27",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852406363,
-      "result": "LOSS",
-      "pnl": -2.26,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:51:51",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852425557,
-      "result": "LOSS",
-      "pnl": -4.6899999999999995,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 12:57:16",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852530840,
-      "result": "LOSS",
-      "pnl": -6.14,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 13:15:53",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852748482,
-      "result": "LOSS",
-      "pnl": -4.45,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 13:55:07",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852793797,
-      "result": "WIN",
-      "pnl": 5.02,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 14:24:04",
-      "indicators": {}
-    },
-    {
-      "ticket": 3852991944,
-      "result": "LOSS",
-      "pnl": -4.29,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 14:36:43",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853040644,
-      "result": "LOSS",
-      "pnl": -3.0,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:02:18",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853147010,
-      "result": "WIN",
-      "pnl": 0.49,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:03:59",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853183333,
-      "result": "WIN",
-      "pnl": 4.77,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:12:32",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853227597,
-      "result": "LOSS",
-      "pnl": -2.16,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:14:09",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853259735,
-      "result": "LOSS",
-      "pnl": -3.56,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:21:37",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853327584,
-      "result": "LOSS",
-      "pnl": -3.69,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:23:00",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853381025,
-      "result": "WIN",
-      "pnl": 4.43,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:28:44",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853415075,
-      "result": "LOSS",
-      "pnl": -4.49,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:31:45",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853440342,
-      "result": "WIN",
-      "pnl": 1.62,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:40:41",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853485838,
-      "result": "LOSS",
-      "pnl": -5.27,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:45:12",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853511058,
-      "result": "LOSS",
-      "pnl": -1.8399999999999999,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:46:41",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853538052,
-      "result": "LOSS",
-      "pnl": -1.8900000000000001,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 15:53:51",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853559344,
-      "result": "LOSS",
-      "pnl": -4.6899999999999995,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:03:19",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853619583,
-      "result": "LOSS",
-      "pnl": -6.52,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:14:12",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853695360,
-      "result": "WIN",
-      "pnl": 1.43,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:15:33",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853729580,
-      "result": "WIN",
-      "pnl": 5.72,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:28:11",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853877005,
-      "result": "WIN",
-      "pnl": 9.55,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:46:02",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853927536,
-      "result": "LOSS",
-      "pnl": -6.01,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:52:48",
-      "indicators": {}
-    },
-    {
-      "ticket": 3853987621,
-      "result": "LOSS",
-      "pnl": -6.79,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 16:58:14",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854020377,
-      "result": "WIN",
-      "pnl": 11.47,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 17:11:05",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854122207,
-      "result": "LOSS",
-      "pnl": -6.91,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 17:15:54",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854153740,
-      "result": "WIN",
-      "pnl": 15.84,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 17:27:53",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854247428,
-      "result": "LOSS",
-      "pnl": -3.91,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 17:30:15",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854395358,
-      "result": "LOSS",
-      "pnl": -4.3,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 17:49:44",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854440290,
-      "result": "LOSS",
-      "pnl": -6.13,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 18:02:59",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854604772,
-      "result": "LOSS",
-      "pnl": -1.28,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 18:15:44",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854675889,
-      "result": "WIN",
-      "pnl": 13.78,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 18:39:27",
-      "indicators": {}
-    },
-    {
-      "ticket": 3854788913,
-      "result": "WIN",
-      "pnl": 11.96,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 19:25:31",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855304889,
-      "result": "LOSS",
-      "pnl": -5.24,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 20:34:42",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855660349,
-      "result": "LOSS",
-      "pnl": -10.84,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 20:42:50",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855747414,
-      "result": "WIN",
-      "pnl": 10.19,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 20:54:15",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855843419,
-      "result": "LOSS",
-      "pnl": -12.32,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:01:15",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855910332,
-      "result": "LOSS",
-      "pnl": -6.43,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:02:54",
-      "indicators": {}
-    },
-    {
-      "ticket": 3855988112,
-      "result": "LOSS",
-      "pnl": -8.86,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:07:42",
-      "indicators": {}
-    },
-    {
-      "ticket": 3856072557,
-      "result": "LOSS",
-      "pnl": -13.32,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:19:36",
-      "indicators": {}
-    },
-    {
-      "ticket": 3856177718,
-      "result": "WIN",
-      "pnl": 14.39,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:22:57",
-      "indicators": {}
-    },
-    {
-      "ticket": 3856273177,
-      "result": "WIN",
-      "pnl": 10.75,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:36:26",
-      "indicators": {}
-    },
-    {
-      "ticket": 3856373265,
-      "result": "LOSS",
-      "pnl": -5.19,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:44:38",
-      "indicators": {}
-    },
-    {
-      "ticket": 3856467147,
-      "result": "LOSS",
-      "pnl": -7.54,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:54:28",
-      "indicators": {}
-    },
-    {
       "ticket": 3856561557,
       "result": "LOSS",
       "pnl": -5.74,
@@ -654,9 +164,499 @@
       "score": 0.0,
       "time": "2026-04-07 21:59:27",
       "indicators": {}
+    },
+    {
+      "ticket": 3857648946,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 01:52:10",
+      "indicators": {}
+    },
+    {
+      "ticket": 3857965374,
+      "result": "LOSS",
+      "pnl": -6.82,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 02:19:19",
+      "indicators": {}
+    },
+    {
+      "ticket": 3858191449,
+      "result": "LOSS",
+      "pnl": -11.41,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 02:46:14",
+      "indicators": {}
+    },
+    {
+      "ticket": 3858280384,
+      "result": "LOSS",
+      "pnl": -5.99,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 02:49:38",
+      "indicators": {}
+    },
+    {
+      "ticket": 3858400778,
+      "result": "LOSS",
+      "pnl": -8.14,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 03:16:34",
+      "indicators": {}
+    },
+    {
+      "ticket": 3858456523,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 03:31:48",
+      "indicators": {}
+    },
+    {
+      "ticket": 3858501281,
+      "result": "LOSS",
+      "pnl": -23.53,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 05:04:10",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860004117,
+      "result": "LOSS",
+      "pnl": -6.76,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 08:19:44",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860125243,
+      "result": "LOSS",
+      "pnl": -6.01,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 08:33:18",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860375297,
+      "result": "LOSS",
+      "pnl": -6.65,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 09:45:23",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860495682,
+      "result": "LOSS",
+      "pnl": -6.01,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 09:55:29",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860562027,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 10:14:00",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860611823,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 11:18:19",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860850398,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 11:40:17",
+      "indicators": {}
+    },
+    {
+      "ticket": 3860947493,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 11:50:38",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861009182,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 12:27:44",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861142261,
+      "result": "WIN",
+      "pnl": 11.99,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 12:48:22",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861264046,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 12:53:32",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861366729,
+      "result": "LOSS",
+      "pnl": -6.06,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 13:10:29",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861453424,
+      "result": "LOSS",
+      "pnl": -5.63,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 13:56:58",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861720191,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 14:12:03",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861753106,
+      "result": "LOSS",
+      "pnl": -6.5,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 14:41:53",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861914436,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 14:52:03",
+      "indicators": {}
+    },
+    {
+      "ticket": 3861995252,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 15:02:53",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862095503,
+      "result": "LOSS",
+      "pnl": -5.8100000000000005,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 15:24:37",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862181648,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 15:42:45",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862374271,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 16:42:44",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862636594,
+      "result": "LOSS",
+      "pnl": -5.6,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 16:59:19",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862722187,
+      "result": "LOSS",
+      "pnl": -5.82,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 17:16:20",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862814016,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 17:46:30",
+      "indicators": {}
+    },
+    {
+      "ticket": 3862922935,
+      "result": "LOSS",
+      "pnl": -6.02,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 17:57:04",
+      "indicators": {}
+    },
+    {
+      "ticket": 3863053043,
+      "result": "LOSS",
+      "pnl": -7.15,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 18:17:52",
+      "indicators": {}
+    },
+    {
+      "ticket": 3863140623,
+      "result": "LOSS",
+      "pnl": -6.75,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 18:31:42",
+      "indicators": {}
+    },
+    {
+      "ticket": 3863386430,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 19:12:54",
+      "indicators": {}
+    },
+    {
+      "ticket": 3863715701,
+      "result": "WIN",
+      "pnl": 0.22,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 20:10:31",
+      "indicators": {}
+    },
+    {
+      "ticket": 3863995568,
+      "result": "LOSS",
+      "pnl": -6.01,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 20:32:47",
+      "indicators": {}
+    },
+    {
+      "ticket": 3864197532,
+      "result": "MANUAL",
+      "pnl": 0.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 20:53:50",
+      "indicators": {}
+    },
+    {
+      "ticket": 3864400739,
+      "result": "LOSS",
+      "pnl": -5.87,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-08 20:58:15",
+      "indicators": {}
+    },
+    {
+      "ticket": 3865963131,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 00:24:24",
+      "indicators": {}
+    },
+    {
+      "ticket": 3867046113,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 05:12:56",
+      "indicators": {}
+    },
+    {
+      "ticket": 3867374828,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 07:04:31",
+      "indicators": {}
+    },
+    {
+      "ticket": 3868667622,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 11:06:21",
+      "indicators": {}
+    },
+    {
+      "ticket": 3868782442,
+      "result": "LOSS",
+      "pnl": -6.9399999999999995,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 12:29:39",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869130289,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 12:53:06",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869298790,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 13:51:15",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869540496,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 14:05:22",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869633743,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 14:08:32",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869720043,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 14:28:56",
+      "indicators": {}
+    },
+    {
+      "ticket": 3869839923,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 14:38:23",
+      "indicators": {}
     }
   ],
-  "trades_since_retrain": 9,
+  "trades_since_retrain": 10,
   "retrain_every": 15,
-  "last_retrain": "2026-04-07 20:54:43"
+  "last_retrain": "2026-04-09 04:30:04"
 }

@@ -1,0 +1,632 @@
+{
+  "date": "2026-04-02",
+  "symbol": "XAUUSD",
+  "news": [
+    {
+      "title": "Swiss National Bank cuts interest rates by a half point to 0.5%",
+      "source": "MarketWatch",
+      "published": "Thu, 12 Dec 2024 08:32:00 GMT",
+      "impact": "HIGH",
+      "url": "https://www.marketwatch.com/story/swiss-national-bank-cuts-interest-rates-by-a-half-point-to-0-5-ed1fce78?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Powell says labor market not a source of significant inflation pressure",
+      "source": "MarketWatch",
+      "published": "Wed, 31 Jul 2024 18:48:00 GMT",
+      "impact": "HIGH",
+      "url": "https://www.marketwatch.com/story/powell-says-labor-market-not-a-source-of-significant-inflation-pressure-cc3b1297?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Fed’s Powell says rate cut ‘on the table’ as soon as September",
+      "source": "MarketWatch",
+      "published": "Wed, 31 Jul 2024 18:41:00 GMT",
+      "impact": "LOW",
+      "url": "https://www.marketwatch.com/story/feds-powell-says-rate-cut-on-the-table-as-soon-as-september-f3f7c8f2?mod=mw_rss_realtimeheadlines",
+      "source_api": "MarketWatch",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Warren Buffett says Iran bomb would make nuclear disaster harder to avoid",
+      "source": "CNBC Finance",
+      "published": "Tue, 31 Mar 2026 17:16:22 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/31/warren-buffett-says-iran-bomb-would-make-nuclear-disaster-harder-to-avoid.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Warren Buffett says he sold Apple too soon and would buy more of it, though not in this market",
+      "source": "CNBC Finance",
+      "published": "Tue, 31 Mar 2026 15:31:12 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/31/warren-buffett-says-he-sold-apple-too-soon-and-would-buy-more-of-it-though-not-in-this-market-.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Warren Buffett says he's still making calls on investments at Berkshire, flags 'tiny' new buy",
+      "source": "CNBC Finance",
+      "published": "Tue, 31 Mar 2026 15:02:49 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/31/warren-buffett-says-hes-still-making-calls-on-investments-at-berkshire-flags-tiny-new-buy.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Warren Buffett teams up with NBA superstar Stephen Curry for charity lunch, reviving iconic auction",
+      "source": "CNBC Finance",
+      "published": "Tue, 31 Mar 2026 16:37:47 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/31/warren-buffett-teams-up-with-stephen-curry-for-charity-lunch.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Powell sees inflation outlook in check, no need to hike rates because of oil shock",
+      "source": "CNBC Finance",
+      "published": "Mon, 30 Mar 2026 19:34:25 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/30/powell-sees-inflation-outlook-in-check-no-wider-crisis-yet-in-private-credit.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Fed Governor Miran still backs cuts, says interest rates could be 'about a point' lower this year",
+      "source": "CNBC Finance",
+      "published": "Wed, 01 Apr 2026 14:09:14 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/30/fed-governor-miran-still-backs-cuts-says-interest-rates-could-be-about-a-point-lower-this-year.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Watch Fed Chair Jerome Powell speak live to an economics class at Harvard",
+      "source": "CNBC Finance",
+      "published": "Mon, 30 Mar 2026 14:47:39 GMT",
+      "impact": "LOW",
+      "url": "https://www.cnbc.com/2026/03/30/watch-fed-chair-jerome-powell-speak-live-to-an-economics-class-at-harvard.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Private credit's cracks open door for Wall Street banks' comeback: 'The tug of war is just starting'",
+      "source": "CNBC Finance",
+      "published": "Fri, 27 Mar 2026 06:15:02 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/27/wall-street-banks-private-credit-market-share-leveraged-loans.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Sen. Warren rips Federal Reserve chair pick Kevin Warsh: 'You have learned nothing from your failures'",
+      "source": "CNBC Finance",
+      "published": "Fri, 27 Mar 2026 15:52:49 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/26/federal-reserve-kevin-walsh-elizabeth-warren-trump.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Jamie Dimon says Iran war makes Middle East peace prospects better in the long term",
+      "source": "CNBC Finance",
+      "published": "Tue, 24 Mar 2026 18:14:24 GMT",
+      "impact": "HIGH",
+      "url": "https://www.cnbc.com/2026/03/24/jamie-dimon-iran-war-middle-east-peace-prospects-long-term.html",
+      "source_api": "CNBC Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Oil prices slide ahead of Trump TV address that may see war curtailed in 2-3 weeks",
+      "source": "Seeking Alpha",
+      "published": "Wed, 01 Apr 2026 19:57:39 -0400",
+      "impact": "HIGH",
+      "url": "https://seekingalpha.com/news/4571900-oil-prices-slide-ahead-of-trump-tv-address-that-may-see-war-curtailed-in-2-3-weeks?utm_source=feed_news_all&utm_medium=referral&feed_item_type=news",
+      "source_api": "Seeking Alpha",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Kinross Gold launches environmental permit process for $1.5B Chile mine",
+      "source": "Seeking Alpha",
+      "published": "Wed, 01 Apr 2026 18:33:33 -0400",
+      "impact": "LOW",
+      "url": "https://seekingalpha.com/news/4571895-kinross-gold-launches-environmental-permit-process-for-15b-chile-mine?utm_source=feed_news_all&utm_medium=referral&feed_item_type=news",
+      "source_api": "Seeking Alpha",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Japanese Yen softens after Trump Iran war remarks",
+      "source": "FXStreet",
+      "published": "Thu, 02 Apr 2026 01:52:53 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/japanese-yen-softens-after-trump-iran-war-remarks-202604020152",
+      "source_api": "FXStreet",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "US President Donald Trump is set to speak to nation on the war with Iran",
+      "source": "FXStreet",
+      "published": "Wed, 01 Apr 2026 23:45:39 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/us-president-donald-trump-is-set-to-speak-to-nation-on-the-war-with-iran-202604012345",
+      "source_api": "FXStreet",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold rises on softer US Dollar, traders await Trump's address on Iran war",
+      "source": "FXStreet",
+      "published": "Wed, 01 Apr 2026 23:20:08 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/gold-rises-on-softer-us-dollar-traders-await-trumps-address-on-iran-war-202604012320",
+      "source_api": "FXStreet",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "USD/JPY drifts near 159.00 as ceasefire hopes and Tokyo warnings collide",
+      "source": "FXStreet",
+      "published": "Wed, 01 Apr 2026 21:45:54 Z",
+      "impact": "HIGH",
+      "url": "https://www.fxstreet.com/news/usd-jpy-drifts-near-15900-as-ceasefire-hopes-and-tokyo-warnings-collide-202604012145",
+      "source_api": "FXStreet",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold snaps 4-day winning streak after Trump speech signals Iran escalation",
+      "source": "Investing.com Comm",
+      "published": "2026-04-02 02:30:39",
+      "impact": "LOW",
+      "url": "https://www.investing.com/news/commodities-news/gold-snaps-4day-winning-streak-after-trump-speech-signals-iran-escalation-4594578",
+      "source_api": "Investing.com Comm",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump says ’core strategic objectives’ in Iran war are nearing completion",
+      "source": "Investing.com Comm",
+      "published": "2026-04-02 01:24:37",
+      "impact": "HIGH",
+      "url": "https://www.investing.com/news/commodities-news/trump-says-core-strategic-objectives-in-iran-war-are-nearing-completion-4594557",
+      "source_api": "Investing.com Comm",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold rebounds after worst month since 2008 as Trump says Iran asked for ceasefire",
+      "source": "Investing.com Comm",
+      "published": "2026-04-01 19:53:47",
+      "impact": "MEDIUM",
+      "url": "https://www.investing.com/news/commodities-news/gold-rises-for-4th-straight-day-as-trump-signals-possible-iran-war-exit-4591974",
+      "source_api": "Investing.com Comm",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD – Bull Trap Signs, Selling Pressure Building",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 04:08:01 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/6sPS23LG-XAUUSD-Bull-Trap-Signs-Selling-Pressure-Building/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold: Play the Retest, Not the FOMO. Precision Entries Only.",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 04:05:04 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/rdaf46Ta-Gold-Play-the-Retest-Not-the-FOMO-Precision-Entries-Only/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "GOLD USD",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 04:02:39 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/W2ygEfYJ-GOLD-USD/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD Has No Reason to Rise",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 04:02:11 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/GSok9DBL-XAUUSD-Has-No-Reason-to-Rise/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD Pullback Setup After Bearish Breakdown",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:52:44 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/mSCghtzf-XAUUSD-Pullback-Setup-After-Bearish-Breakdown/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Outlook: Consolidation Phase Before the Bullish Breakout.",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:50:34 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/uqmXpDsc-Gold-Outlook-Consolidation-Phase-Before-the-Bullish-Breakout/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Bullish Continuation After Support Retest",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:41:47 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/qOjoZLa6-Gold-Bullish-Continuation-After-Support-Retest/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold long range forecast",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:38:58 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/8Eq8CrCT-Gold-long-range-forecast/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Me High",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:30:26 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/UEtVUQTl-Gold-Me-High/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD RECOVERY",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:23:47 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/gofX1pDy-XAUUSD-RECOVERY/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD - BUY - Knee Jerk Reaction",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:23:44 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/nxEHFs7N-XAUUSD-BUY-Knee-Jerk-Reaction/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Plunges: Peak Performance or Just a Pullback?",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:12:14 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/srMjKd6t-Gold-Plunges-Peak-Performance-or-Just-a-Pullback/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold H4: Recovery Supported by Weaker USD and Yields",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 03:11:37 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/LSfcZ5lI-Gold-H4-Recovery-Supported-by-Weaker-USD-and-Yields/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAUUSD – Liquidity Sweep + Demand Zone Re-Entry | 1H Setup",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 02:49:23 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/XAUUSD/bxQGRLHg-XAUUSD-Liquidity-Sweep-Demand-Zone-Re-Entry-1H-Setup/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold opening trading strategy: bulls consolidate before reboundi",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 02:45:53 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/jYnjLNlT-Gold-opening-trading-strategy-bulls-consolidate-before-reboundi/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Crash: Is the Bull Run Officially Over?",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 02:45:41 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/4oIMyns6-Gold-Crash-Is-the-Bull-Run-Officially-Over/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "XAU/USD Drops from Highs – Testing Trendline Support",
+      "source": "TradingView Ideas",
+      "published": "Thu, 02 Apr 2026 02:36:19 +0000",
+      "impact": "LOW",
+      "url": "https://www.tradingview.com/chart/GOLD/TqOdRjbr-XAU-USD-Drops-from-Highs-Testing-Trendline-Support/",
+      "source_api": "TradingView Ideas",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump spoke without adding new info, still a 2-3 timeline, no ground war announced",
+      "source": "ForexLive",
+      "published": "Thu, 02 Apr 2026 01:25:56 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/trump-spoke-without-adding-new-info-still-a-2-3-timeline-no-ground-war-announced-20260402/",
+      "source_api": "ForexLive",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Tsunami warning issues after M7.8 earthquake, Indonesia (Molucca Sea)",
+      "source": "ForexLive",
+      "published": "Wed, 01 Apr 2026 23:04:37 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/tsunami-warning-issues-after-m78-earthquake-indonesia-molucca-sea-20260401/",
+      "source_api": "ForexLive",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump will say the Iran war is \"winding down\" in address, will criticize NATO",
+      "source": "ForexLive",
+      "published": "Wed, 01 Apr 2026 19:40:38 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/trump-will-say-the-iran-war-is-winding-down-in-address-will-criticize-nato-20260401/",
+      "source_api": "ForexLive",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Iran's Pres Pezeskian : Iranian people harbor no enmity toward other nations",
+      "source": "ForexLive",
+      "published": "Wed, 01 Apr 2026 18:40:37 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/irans-pres-pezeskian-full-letter-to-the-american-people-20260401/",
+      "source_api": "ForexLive",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "White House: Pres Trump to reiterate 2 to 3 week timetable for end of war",
+      "source": "ForexLive",
+      "published": "Wed, 01 Apr 2026 16:22:00 GMT",
+      "impact": "HIGH",
+      "url": "https://investinglive.com/news/white-house-pres-trump-to-reiterate-2-to-3-week-timetable-for-end-of-war-20260401/",
+      "source_api": "ForexLive",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Bitcoin edges up to above $66.5k even as Iran war continues to escalate",
+      "source": "Investing.com Gold",
+      "published": "2026-03-30 22:17:06",
+      "impact": "HIGH",
+      "url": "https://www.investing.com/news/cryptocurrency-news/bitcoin-edges-up-to-67k-with-iran-war-escalation-in-focus-4586827",
+      "source_api": "Investing.com Gold",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Oil Jumps on Trump’s War Threat, Stock Rally Fades: Markets Wrap",
+      "source": "Bloomberg Markets",
+      "published": "Wed, 01 Apr 2026 22:23:53 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-01/asian-stocks-to-rise-on-hopes-iran-war-nearing-end-markets-wrap",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump Threatens to Escalate War in Iran Even As End Is \"Close”",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 03:34:32 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/videos/2026-04-02/trump-threatens-to-escalate-war-in-iran-video",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Treasuries Fall as Trump’s Iran Threats Add to Inflation Concern",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 03:11:31 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-02/treasuries-fall-as-trump-s-iran-threats-add-to-inflation-concern",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Oil Jumps as Trump Threatens War Escalation Over Coming Weeks",
+      "source": "Bloomberg Markets",
+      "published": "Wed, 01 Apr 2026 22:07:53 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-01/latest-oil-market-news-and-analysis-for-april-2",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump Threatens to Escalate Iran War, Says End Is Close",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 02:54:17 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/videos/2026-04-02/trump-threatens-to-escalate-iran-war-says-end-is-close-video",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Trump’s Renewed Iran Warning Risks More Volatility, Analysts Say",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 01:52:52 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-02/trump-s-renewed-iran-warning-risks-more-volatility-analysts-say",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Falls as Trump Gives Mixed Signals on Iran War Resolution",
+      "source": "Bloomberg Markets",
+      "published": "Wed, 01 Apr 2026 22:23:36 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-01/gold-holds-four-day-gain-as-trump-sets-stage-for-iran-war-exit",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Malaysia’s Anwar Urges Crackdown on Fake News Over Fuel Prices",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 00:49:35 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-02/malaysia-s-anwar-urges-crackdown-on-fake-news-over-fuel-prices",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Foreigners Chase Malaysian Bonds as War Hits Emerging Markets",
+      "source": "Bloomberg Markets",
+      "published": "Thu, 02 Apr 2026 00:26:33 GMT",
+      "impact": "HIGH",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-02/foreigners-chase-malaysian-bonds-as-war-hits-emerging-markets",
+      "source_api": "Bloomberg Markets",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Exchange-Traded Funds, Equity Futures Gain Pre-Bell Wednesday as Iran War De-Escalation Hopes Drive Sentiment",
+      "source": "MT Newswires",
+      "published": "2026-04-01T13:06:39Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/stocks/articles/exchange-traded-funds-equity-futures-130639197.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "A ‘Golden’ Way to Trade the Volatility in Gold Prices for Low Risk, High Reward",
+      "source": "Barchart",
+      "published": "2026-03-31T18:50:11Z",
+      "impact": "HIGH",
+      "url": "https://www.barchart.com/story/news/1072235/a-golden-way-to-trade-the-volatility-in-gold-prices-for-low-risk-high-reward",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Update: Gold Climbs as Powell Says Interest-Rate Hikes are Unlikely; Reports Say the U.S. May End the Iran War",
+      "source": "MT Newswires",
+      "published": "2026-03-31T18:00:07Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-climbs-powell-says-interest-180007326.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Climbs as Powell Says Interest-Rate Hikes are Unlikely While Reports Say the U.S. May End the Iran War",
+      "source": "MT Newswires",
+      "published": "2026-03-31T13:13:20Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-climbs-powell-says-interest-131320575.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold Jumps 2.4% as Fed Signals Patience, Trump Weighs Iran War End",
+      "source": "GuruFocus.com",
+      "published": "2026-03-31T13:05:43Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-jumps-2-4-fed-130543292.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "There Are Only 2 Main Ways To Protect Money From Trump's Iran War",
+      "source": "Investor's Business Daily",
+      "published": "2026-03-31T11:35:46Z",
+      "impact": "HIGH",
+      "url": "https://www.investors.com/etfs-and-funds/sectors/sp500-are-only-two-places-to-protect-money-from-trumps-iran-war/?src=A00220&yptr=yahoo",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Update: Gold Trading Higher as Traders Focus on Economic Fallout of the Iran War",
+      "source": "MT Newswires",
+      "published": "2026-03-30T18:00:15Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-trading-higher-traders-focus-180015022.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    },
+    {
+      "title": "Gold rebounds above $4,500 as dip-buyers step in amid war-driven volatility",
+      "source": "GuruFocus.com",
+      "published": "2026-03-30T15:50:58Z",
+      "impact": "HIGH",
+      "url": "https://finance.yahoo.com/markets/commodities/articles/gold-rebounds-above-4-500-155058126.html",
+      "source_api": "Yahoo Finance",
+      "date": "2026-04-02"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Challenger Job Cuts y/y",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "-71.9%",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Unemployment Claims",
+      "country": "USD",
+      "time": "",
+      "impact": "HIGH",
+      "forecast": "212K",
+      "previous": "210K",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Trade Balance",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "-60.5B",
+      "previous": "-54.5B",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "FOMC Member Logan Speaks",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "Natural Gas Storage",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "38B",
+      "previous": "-54B",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    },
+    {
+      "title": "FOMC Member Bowman Speaks",
+      "country": "USD",
+      "time": "",
+      "impact": "LOW",
+      "forecast": "",
+      "previous": "",
+      "actual": "",
+      "date": "2026-04-02",
+      "source_api": "ForexFactory Calendar"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ try:
 except ImportError:
     _mt5 = None
 
-from backend.broker.mt5_connector import MT5Connector, MT5_AVAILABLE
+from app.engine.broker.mt5_connector import MT5Connector, MT5_AVAILABLE
 
 LOT = 0.01
 
@@ -103,7 +103,7 @@ def main():
     symbol    = args.symbol
 
     # Jika bukan key di SYMBOL_MAP, inject langsung ke MT5Connector
-    from backend.broker.mt5_connector import SYMBOL_MAP
+    from app.engine.broker.mt5_connector import SYMBOL_MAP
     if symbol not in SYMBOL_MAP:
         SYMBOL_MAP[symbol] = symbol   # pakai nama exact
 
