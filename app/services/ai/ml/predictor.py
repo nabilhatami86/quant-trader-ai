@@ -871,7 +871,7 @@ class ScalpingPredictor:
 
         # ── 1. Load data ──────────────────────────────────────────────
         # Prioritas: ai/ml/data/ (MT5 export, lebih banyak) → data/history/ (fallback)
-        _mt5_dir  = _ROOT / 'data'
+        _mt5_dir  = _ROOT / 'ai' / 'ml' / 'data'
         _m5_mt5   = _mt5_dir / 'XAUUSDm_M5.csv'
         _h1_mt5   = _mt5_dir / 'XAUUSDm_H1.csv'
 

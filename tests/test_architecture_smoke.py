@@ -5,6 +5,7 @@ MODULES = [
     "app",
     "app.api",
     "app.api.deps",
+    "app.api.main",
     "app.api.routes.signal",
     "app.api.schemas.trade",
     "app.core.config",
@@ -34,6 +35,7 @@ def test_app_modules_importable():
 def test_legacy_wrappers_still_importable():
     legacy_modules = [
         "api.deps",
+        "api_main",
         "backend.bot",
         "backend.broker.mt5_connector",
         "db.database",

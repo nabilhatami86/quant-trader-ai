@@ -1567,8 +1567,9 @@ class SignalExecutor:
                     else:
                         failed += 1
 
-            self.last_sig  = direction
-            self.last_tick = time.time()
+            if success_tickets:
+                self.last_sig  = direction
+                self.last_tick = time.time()
 
             GREEN = "\033[92m"
             RED   = "\033[91m"
@@ -1637,12 +1638,11 @@ class SignalExecutor:
             sl=sl,
             tp=tp,
         )
-        self.last_sig  = direction
-        self.last_tick = time.time()
-
         # Catat waktu trade untuk cooldown + daily counter
         if result.get("success"):
             _now_ts = time.time()
+            self.last_sig  = direction
+            self.last_tick = _now_ts
             self._last_trade_time = _now_ts
             self._trades_this_hour.append(_now_ts)
             self._trades_today += 1

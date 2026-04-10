@@ -92,7 +92,7 @@ def _apply_to_config(overrides: dict):
 
 
 def _apply_runtime_on_startup():
-    """Dipanggil saat startup api_main.py untuk restore overrides."""
+    """Dipanggil saat startup app.api.main untuk restore overrides."""
     overrides = _load_runtime()
     if overrides:
         applied = _apply_to_config(overrides)

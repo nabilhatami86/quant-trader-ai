@@ -1,7 +1,7 @@
 """
-api_main.py — Entry point FastAPI Trader AI
-Jalankan dengan: python api_main.py
-Atau production: uvicorn api_main:app --host 0.0.0.0 --port 8000
+app.api.main — FastAPI entrypoint for Trader AI
+Jalankan dengan: python -m app.api.main
+Atau production: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 """
 import sys, io, os
 # Force UTF-8 agar karakter unicode (→ ★ ✓ dll) tidak error di Windows
@@ -24,6 +24,7 @@ from app.database.session import create_tables
 from app.services.bot_service import bot_service
 from app.api.routes import signal, trade, journal, backtest, webhook, txlog
 from app.api.routes import positions, adaptive, analysis, stats, bot_control, ws as ws_route, settings as settings_route
+from app.api.routes import runner as runner_route
 
 # Setup logging sebelum apapun
 setup_logging(debug=settings.DEBUG)
@@ -260,6 +261,7 @@ app.include_router(stats.router)
 app.include_router(bot_control.router)
 app.include_router(ws_route.router)   # WebSocket /ws/live
 app.include_router(settings_route.router)  # /settings
+app.include_router(runner_route.router)    # /runner — subprocess main.py
 
 
 # ── Health endpoints ──────────────────────────────────────────────────────────
@@ -288,7 +290,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "api_main:app",
+        "app.api.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,

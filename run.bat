@@ -34,8 +34,8 @@ echo   C. Custom command
 echo.
 set /p CHOICE="Pilihan: "
 
-if "%CHOICE%"=="1"  uvicorn api_main:app --host 0.0.0.0 --port 8000 --workers 1
-if "%CHOICE%"=="2"  uvicorn api_main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+if "%CHOICE%"=="1"  uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+if "%CHOICE%"=="2"  uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
 
 if "%CHOICE%"=="3"  python -X utf8 main.py --symbol XAUUSD --tf 1h  --live --mt5 --real
 if "%CHOICE%"=="4"  python -X utf8 main.py --symbol XAUUSD --tf 5m  --live --mt5 --real

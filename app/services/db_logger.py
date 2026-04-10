@@ -237,10 +237,92 @@ async def _async_log_skip(result: dict, reason: str) -> None:
                 timeframe=result.get("timeframe"),
                 direction=sig.get("direction"),
                 price=result.get("close"),
+                sl=sig.get("sl"),
+                tp=sig.get("tp"),
                 message=reason[:255],
+                meta={
+                    "reason":            reason,
+                    "exec_source":       result.get("exec_source"),
+                    "score":             sig.get("score"),
+                    "score_technical":   sig.get("score_technical"),
+                    "score_volume":      sig.get("score_volume"),
+                    "score_smc":         sig.get("score_smc"),
+                    "score_structure":   sig.get("score_structure"),
+                    "score_news":        sig.get("score_news"),
+                    "ml_direction":      result.get("ml_pred", {}).get("direction"),
+                    "ml_confidence":     result.get("ml_pred", {}).get("confidence"),
+                    "ml_prob":           result.get("scalping_pred", {}).get("probability"),
+                    "news_risk":         result.get("news_risk"),
+                    "regime":            sig.get("regime"),
+                    "session":           result.get("session"),
+                },
             )
     except Exception as exc:
         logger.debug(f"_async_log_skip: {exc}")
+
+
+# ── ML training result ─────────────────────────────────────────────────────
+
+def save_ml_result(
+    symbol: str,
+    timeframe: str,
+    model_type: str,
+    accuracy: float,
+    conf_accuracy: float,
+    precision_buy: float,
+    recall_buy: float,
+    f1: float,
+    n_features: int,
+    n_train: int,
+    n_test: int,
+    n_sideways_removed: int = 0,
+) -> bool:
+    """Simpan hasil training ML ke tabel ml_results."""
+    try:
+        return asyncio.run(_async_save_ml_result(
+            symbol, timeframe, model_type,
+            accuracy, conf_accuracy, precision_buy, recall_buy, f1,
+            n_features, n_train, n_test, n_sideways_removed,
+        ))
+    except Exception as exc:
+        logger.warning(f"save_ml_result error: {exc}")
+        return False
+
+
+async def _async_save_ml_result(
+    symbol, timeframe, model_type,
+    accuracy, conf_accuracy, precision_buy, recall_buy, f1,
+    n_features, n_train, n_test, n_sideways_removed,
+) -> bool:
+    from app.database.models import MLResult
+    from datetime import datetime, timezone
+    try:
+        async with _tdb() as db:
+            row = MLResult(
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
+                accuracy=round(float(accuracy), 6),
+                conf_accuracy=round(float(conf_accuracy), 6),
+                precision_buy=round(float(precision_buy), 6),
+                recall_buy=round(float(recall_buy), 6),
+                f1_score=round(float(f1), 6),
+                n_features=int(n_features),
+                n_train=int(n_train),
+                n_test=int(n_test),
+                n_sideways_removed=int(n_sideways_removed),
+                trained_at=datetime.now(tz=timezone.utc),
+            )
+            db.add(row)
+            await db.commit()
+            logger.info(
+                f"MLResult saved: {symbol} {timeframe} {model_type} "
+                f"acc={accuracy:.4f} f1={f1:.4f}"
+            )
+            return True
+    except Exception as exc:
+        logger.debug(f"_async_save_ml_result: {exc}")
+        return False
 
 
 def save_candles_batch(df, symbol: str, timeframe: str) -> int:
@@ -486,6 +568,7 @@ async def _async_ensure_outcome_cols() -> None:
                 "ALTER TABLE signals ADD COLUMN IF NOT EXISTS session_bias VARCHAR(20);",
                 "ALTER TABLE signals ADD COLUMN IF NOT EXISTS ticket INTEGER;",
                 "ALTER TABLE signals ADD COLUMN IF NOT EXISTS pnl_usd FLOAT;",
+                "ALTER TABLE ml_results ADD COLUMN IF NOT EXISTS conf_accuracy FLOAT DEFAULT 0;",
             ]:
                 try:
                     await conn.execute(_text(sql))
