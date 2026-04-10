@@ -125,7 +125,7 @@ trader-ai/
 │
 ├── config.py                         ← Parameter trading (TP/SL, lot, filter, dll)
 ├── main.py                           ← Entry point CLI / live bot
-├── api_main.py                       ← Entry point FastAPI server
+├── app/api/main.py                   ← Entry point FastAPI server
 ├── runtime_settings.json             ← Override config via API (auto-generated)
 ├── .env                              ← Kredensial MT5, DB, API key
 ├── requirements.txt
@@ -141,7 +141,7 @@ STARTUP
   create DB tables → connect MT5 → load ScalpML model → init bot → fetch news
                          ↓
         ┌────────────────┴───────────────┐
-        │  API Mode (api_main.py)        │  CLI Mode (main.py)
+        │  API Mode (app.api.main)       │  CLI Mode (main.py)
         │  Background thread 60 detik    │  Loop 60 detik
         └────────────────┬───────────────┘
                          ↓
@@ -379,10 +379,10 @@ python main.py --live --mt5 --no-ml
 
 ```bash
 # Jalankan API + bot di background
-python api_main.py
+python -m app.api.main
 
 # Production
-uvicorn api_main:app --host 0.0.0.0 --port 8000
+uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 
 # Docs tersedia di:
 # http://localhost:8000/docs

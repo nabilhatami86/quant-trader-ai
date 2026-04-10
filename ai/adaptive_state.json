@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "last_updated": "2026-04-09 14:38:23",
-  "total_trades": 771,
+  "last_updated": "2026-04-10 13:38:47",
+  "total_trades": 775,
   "recent_window": 20,
   "indicator_hits": {},
   "source_hits": {
     "TraderAI-Bot": {
-      "win": 282,
-      "loss": 489
+      "win": 284,
+      "loss": 491
     }
   },
   "base_min_score": 4.0,
@@ -155,46 +155,6 @@
     }
   ],
   "recent_trades": [
-    {
-      "ticket": 3856561557,
-      "result": "LOSS",
-      "pnl": -5.74,
-      "direction": "BUY",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-07 21:59:27",
-      "indicators": {}
-    },
-    {
-      "ticket": 3857648946,
-      "result": "WIN",
-      "pnl": 12.0,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-08 01:52:10",
-      "indicators": {}
-    },
-    {
-      "ticket": 3857965374,
-      "result": "LOSS",
-      "pnl": -6.82,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-08 02:19:19",
-      "indicators": {}
-    },
-    {
-      "ticket": 3858191449,
-      "result": "LOSS",
-      "pnl": -11.41,
-      "direction": "SELL",
-      "source": "TraderAI-Bot",
-      "score": 0.0,
-      "time": "2026-04-08 02:46:14",
-      "indicators": {}
-    },
     {
       "ticket": 3858280384,
       "result": "LOSS",
@@ -654,9 +614,49 @@
       "score": 0.0,
       "time": "2026-04-09 14:38:23",
       "indicators": {}
+    },
+    {
+      "ticket": 3870487025,
+      "result": "LOSS",
+      "pnl": -6.06,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 17:22:22",
+      "indicators": {}
+    },
+    {
+      "ticket": 3871360967,
+      "result": "WIN",
+      "pnl": 12.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 19:41:41",
+      "indicators": {}
+    },
+    {
+      "ticket": 3872564600,
+      "result": "LOSS",
+      "pnl": -6.0,
+      "direction": "BUY",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-09 21:43:03",
+      "indicators": {}
+    },
+    {
+      "ticket": 3876446879,
+      "result": "WIN",
+      "pnl": 11.71,
+      "direction": "SELL",
+      "source": "TraderAI-Bot",
+      "score": 0.0,
+      "time": "2026-04-10 13:38:47",
+      "indicators": {}
     }
   ],
-  "trades_since_retrain": 10,
+  "trades_since_retrain": 1,
   "retrain_every": 15,
-  "last_retrain": "2026-04-09 04:30:04"
+  "last_retrain": "2026-04-10 04:28:31"
 }

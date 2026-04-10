@@ -1,22 +1,4 @@
 #!/usr/bin/env python
-"""
-backtest.py — Backtest profesional bot XAUUSD.
-
-Metrik yang diukur:
-  Win Rate         → % trade menang           (target 50-65%)
-  Profit Factor    → total_profit / total_loss (target > 1.5)
-  Max Drawdown     → penurunan equity terbesar (target < 200)
-  Average R        → rata-rata RR yang tercapai
-  Total Pips       → akumulasi dari semua trade
-
-Cara pakai:
-  python backtest.py                    # 60 hari, default
-  python backtest.py --period 30d       # 30 hari
-  python backtest.py --verbose          # tampilkan tiap trade
-  python backtest.py --csv              # simpan trade log ke CSV
-  python backtest.py --period 30d --verbose --csv
-"""
-
 import argparse
 import os
 import sys

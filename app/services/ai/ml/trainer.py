@@ -773,6 +773,32 @@ with open(MODEL_DIR / 'xauusd_scalping_model_meta.json', 'w') as f:
 print(f"  Saved: models/xauusd_scalping_model.joblib")
 print(f"  Saved: models/xauusd_scalping_model_meta.json")
 
+# ── Simpan semua model metrics ke DB ─────────────────────────────────────
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(_ROOT))
+    from app.services.db_logger import save_ml_result as _save_ml
+
+    _buy_cls = 2  # label BUY = 2
+    for _mname, _mrow in res_df.iterrows():
+        _save_ml(
+            symbol='XAUUSDm',
+            timeframe='M5',
+            model_type=str(_mname),
+            accuracy=float(_mrow.get('acc', 0)),
+            conf_accuracy=float(_mrow.get('conf_acc', 0)),
+            precision_buy=float(_mrow.get('prec', 0)),
+            recall_buy=float(_mrow.get('rec', 0)),
+            f1=float(_mrow.get('f1', 0)),
+            n_features=int(K_FEATURES),
+            n_train=int(len(X_train)),
+            n_test=int(len(X_test)),
+            n_sideways_removed=0,
+        )
+    print(f"  Saved: {len(res_df)} model results → DB (ml_results)")
+except Exception as _e:
+    print(f"  [!] DB save ml_results gagal: {_e}")
+
 # ==================================================
 # FINAL SUMMARY
 # ==================================================
